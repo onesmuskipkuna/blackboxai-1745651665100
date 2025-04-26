@@ -16,7 +16,7 @@ $success = '';
 // Fetch expense categories
 $categories_result = $conn->query("SELECT id, name FROM expense_categories ORDER BY name");
 $categories = [];
-while ($row = $categories_result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $categories_result->fetch_assoc()) {
     $categories[] = $row;
 }
 
@@ -29,11 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$category_id || !$amount || !$date) {
         $error = 'Category, amount, and date are required';
     } else {
-        $stmt = $conn->prepare("INSERT INTO expenses (category_id, amount, description, date) VALUES (:category_id, :amount, :description, :date)");
-        $stmt->bindValue(':category_id', $category_id, SQLITE3_INTEGER);
-        $stmt->bindValue(':amount', $amount, SQLITE3_FLOAT);
-        $stmt->bindValue(':description', $description, SQLITE3_TEXT);
-        $stmt->bindValue(':date', $date, SQLITE3_TEXT);
+        $stmt = $conn->prepare("INSERT INTO expenses (category_id, amount, description, date) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param('idss', $category_id, $amount, $description, $date);
         $stmt->execute();
 
         flashMessage('success', 'Expense added successfully');
