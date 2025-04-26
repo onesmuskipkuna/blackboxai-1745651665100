@@ -18,22 +18,22 @@ $recent_payments = [];
 $recent_expenses = [];
 
 $result = $conn->query("SELECT COUNT(*) as total FROM students WHERE status = 'active'");
-if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+if ($row = $result->fetch_assoc()) {
     $total_students = $row['total'];
 }
 
-$result = $conn->query("SELECT SUM(amount) as total FROM payments WHERE strftime('%m', created_at) = strftime('%m', 'now') AND strftime('%Y', created_at) = strftime('%Y', 'now')");
-if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+$result = $conn->query("SELECT SUM(amount) as total FROM payments WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())");
+if ($row = $result->fetch_assoc()) {
     $fees_this_month = $row['total'] ?? 0;
 }
 
-$result = $conn->query("SELECT SUM(amount) as total FROM expenses WHERE strftime('%m', date) = strftime('%m', 'now') AND strftime('%Y', date) = strftime('%Y', 'now')");
-if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+$result = $conn->query("SELECT SUM(amount) as total FROM expenses WHERE MONTH(date) = MONTH(CURRENT_DATE()) AND YEAR(date) = YEAR(CURRENT_DATE())");
+if ($row = $result->fetch_assoc()) {
     $expenses_this_month = $row['total'] ?? 0;
 }
 
 $result = $conn->query("SELECT SUM(balance) as total FROM invoices WHERE status != 'fully_paid'");
-if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+if ($row = $result->fetch_assoc()) {
     $outstanding_fees = $row['total'] ?? 0;
 }
 
@@ -45,7 +45,7 @@ $result = $conn->query("
     ORDER BY p.created_at DESC 
     LIMIT 5
 ");
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $recent_payments[] = $row;
 }
 
@@ -56,7 +56,7 @@ $result = $conn->query("
     ORDER BY e.date DESC 
     LIMIT 5
 ");
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $recent_expenses[] = $row;
 }
 
