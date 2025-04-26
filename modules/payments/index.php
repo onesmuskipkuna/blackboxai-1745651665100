@@ -15,49 +15,49 @@ if (isset($_POST['delete_payment'])) {
     $payment_id = (int)$_POST['payment_id'];
     
     // Begin transaction
-    $conn->exec('BEGIN');
+    $conn->begin_transaction();
     
     try {
         // Get payment details first
-        $stmt = $conn->prepare("SELECT invoice_id, amount FROM payments WHERE id = :payment_id");
-        $stmt->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
-        $result = $stmt->execute();
-        $payment = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT invoice_id, amount FROM payments WHERE id = ?");
+        $stmt->bind_param('i', $payment_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $payment = $result->fetch_assoc();
         
         if ($payment) {
             // Update invoice paid amount and balance
             $stmt = $conn->prepare("
                 UPDATE invoices 
-                SET paid_amount = paid_amount - :amount,
-                    balance = balance + :amount,
+                SET paid_amount = paid_amount - ?,
+                    balance = balance + ?,
                     status = CASE 
-                        WHEN (paid_amount - :amount) = 0 THEN 'due'
-                        WHEN (paid_amount - :amount) < total_amount THEN 'partially_paid'
+                        WHEN (paid_amount - ?) = 0 THEN 'due'
+                        WHEN (paid_amount - ?) < total_amount THEN 'partially_paid'
                         ELSE status
                     END
-                WHERE id = :invoice_id
+                WHERE id = ?
             ");
-            $stmt->bindValue(':amount', $payment['amount'], SQLITE3_FLOAT);
-            $stmt->bindValue(':invoice_id', $payment['invoice_id'], SQLITE3_INTEGER);
+            $stmt->bind_param('dddii', $payment['amount'], $payment['amount'], $payment['amount'], $payment['amount'], $payment['invoice_id']);
             $stmt->execute();
             
             // Delete payment items first
-            $stmt = $conn->prepare("DELETE FROM payment_items WHERE payment_id = :payment_id");
-            $stmt->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
+            $stmt = $conn->prepare("DELETE FROM payment_items WHERE payment_id = ?");
+            $stmt->bind_param('i', $payment_id);
             $stmt->execute();
             
             // Then delete the payment
-            $stmt = $conn->prepare("DELETE FROM payments WHERE id = :payment_id");
-            $stmt->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
+            $stmt = $conn->prepare("DELETE FROM payments WHERE id = ?");
+            $stmt->bind_param('i', $payment_id);
             $stmt->execute();
             
             // Commit transaction
-            $conn->exec('COMMIT');
+            $conn->commit();
             flashMessage('success', 'Payment deleted successfully.');
         }
     } catch (Exception $e) {
         // Rollback on error
-        $conn->exec('ROLLBACK');
+        $conn->rollback();
         flashMessage('error', 'Error deleting payment: ' . $e->getMessage());
     }
     redirect($_SERVER['PHP_SELF']);
@@ -97,7 +97,7 @@ $query .= " ORDER BY p.created_at DESC";
 
 $result = $conn->query($query);
 $payments = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $payments[] = $row;
 }
 
