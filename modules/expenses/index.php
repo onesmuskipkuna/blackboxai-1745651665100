@@ -21,7 +21,7 @@ $query = "
 $result = $conn->query($query);
 
 $expenses = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $expenses[] = $row;
 }
 
