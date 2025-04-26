@@ -20,28 +20,30 @@ $error = '';
 $success = '';
 
 // Fetch invoice details
-$stmt = $conn->prepare("SELECT * FROM invoices WHERE id = :id");
-$stmt->bindValue(':id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$invoice = $result->fetchArray(SQLITE3_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM invoices WHERE id = ?");
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$invoice = $result->fetch_assoc();
 if (!$invoice) {
     flashMessage('error', 'Invoice not found');
     redirect('index.php');
 }
 
 // Fetch invoice items
-$stmt = $conn->prepare("SELECT * FROM invoice_items WHERE invoice_id = :invoice_id");
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt = $conn->prepare("SELECT * FROM invoice_items WHERE invoice_id = ?");
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
 $invoice_items = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $invoice_items[] = $row;
 }
 
 // Fetch active students for dropdown
 $students_result = $conn->query("SELECT id, admission_number, first_name, last_name, class, education_level FROM students WHERE status = 'active' ORDER BY admission_number");
 $students = [];
-while ($row = $students_result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $students_result->fetch_assoc()) {
     $students[] = $row;
 }
 
@@ -55,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$student_id || !$term || !$academic_year || !$due_date || empty($fee_items)) {
         $error = 'All fields are required';
     } else {
-        $conn->exec('BEGIN');
+        $conn->begin_transaction();
         try {
             // Calculate total amount
             $total_amount = 0;
@@ -64,37 +66,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Update invoice
-            $stmt = $conn->prepare("UPDATE invoices SET student_id = :student_id, total_amount = :total_amount, balance = :balance, term = :term, academic_year = :academic_year, due_date = :due_date WHERE id = :id");
-            $stmt->bindValue(':student_id', $student_id, SQLITE3_INTEGER);
-            $stmt->bindValue(':total_amount', $total_amount, SQLITE3_FLOAT);
-            $stmt->bindValue(':balance', $total_amount, SQLITE3_FLOAT);
-            $stmt->bindValue(':term', $term, SQLITE3_INTEGER);
-            $stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
-            $stmt->bindValue(':due_date', $due_date, SQLITE3_TEXT);
-            $stmt->bindValue(':id', $invoice_id, SQLITE3_INTEGER);
+            $stmt = $conn->prepare("UPDATE invoices SET student_id = ?, total_amount = ?, balance = ?, term = ?, academic_year = ?, due_date = ? WHERE id = ?");
+            $stmt->bind_param('iddsisi', $student_id, $total_amount, $total_amount, $term, $academic_year, $due_date, $invoice_id);
             $stmt->execute();
 
             // Delete existing invoice items
-            $stmt = $conn->prepare("DELETE FROM invoice_items WHERE invoice_id = :invoice_id");
-            $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
+            $stmt = $conn->prepare("DELETE FROM invoice_items WHERE invoice_id = ?");
+            $stmt->bind_param('i', $invoice_id);
             $stmt->execute();
 
             // Insert new invoice items
-            $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (:invoice_id, :fee_structure_id, :amount)");
+            $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (?, ?, ?)");
             foreach ($fee_items as $item) {
                 $fee_id = (int)$item['fee_id'];
                 $amount = (float)$item['amount'];
-                $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-                $stmt->bindValue(':fee_structure_id', $fee_id, SQLITE3_INTEGER);
-                $stmt->bindValue(':amount', $amount, SQLITE3_FLOAT);
+                $stmt->bind_param('iid', $invoice_id, $fee_id, $amount);
                 $stmt->execute();
             }
 
-            $conn->exec('COMMIT');
+            $conn->commit();
             flashMessage('success', 'Invoice updated successfully');
             redirect('index.php');
         } catch (Exception $e) {
-            $conn->exec('ROLLBACK');
+            $conn->rollback();
             $error = 'Error updating invoice: ' . $e->getMessage();
         }
     }
