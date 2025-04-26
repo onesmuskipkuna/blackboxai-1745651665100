@@ -26,32 +26,21 @@ if (!$class || !$education_level || !$term || !$academic_year) {
 $stmt = $conn->prepare("
     SELECT id, fee_item, amount 
     FROM fee_structure 
-    WHERE class = :class
-    AND education_level = :education_level
-    AND term = :term
-    AND academic_year = :academic_year
+    WHERE class = ?
+    AND education_level = ?
+    AND term = ?
+    AND academic_year = ?
     ORDER BY fee_item
 ");
 
-if (!$stmt) {
-    echo json_encode(['error' => 'Failed to prepare statement']);
-    exit;
-}
+$stmt->bind_param('ssis', $class, $education_level, $term, $academic_year);
 
-$stmt->bindValue(':class', $class, SQLITE3_TEXT);
-$stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
-$stmt->bindValue(':term', $term, SQLITE3_INTEGER);
-$stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
+$stmt->execute();
 
-$result = $stmt->execute();
-
-if (!$result) {
-    echo json_encode(['error' => 'Failed to execute statement']);
-    exit;
-}
+$result = $stmt->get_result();
 
 $fee_items = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $fee_items[] = $row;
 }
 
