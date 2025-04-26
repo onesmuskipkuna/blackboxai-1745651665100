@@ -15,7 +15,7 @@ $success = '';
 
 // Get active students for dropdown
 $students_result = $conn->query("
-    SELECT DISTINCT s.id, s.admission_number, s.first_name, s.last_name 
+    SELECT DISTINCT s.id, s.admission_number, s.first_name, s.last_name, s.phone_number 
     FROM students s 
     JOIN invoices i ON s.id = i.student_id 
     WHERE s.status = 'active' 
@@ -23,7 +23,7 @@ $students_result = $conn->query("
     ORDER BY s.admission_number
 ");
 $students = [];
-while ($row = $students_result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $students_result->fetch_assoc()) {
     $students[] = $row;
 }
 
@@ -40,21 +40,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'All fields are required';
     } else {
         // Begin transaction
-        $conn->exec('BEGIN');
+        $conn->begin_transaction();
 
         try {
             // Generate payment number (RCP/YEAR/SERIAL)
             $year = date('Y');
-            $result = $conn->query("
-                SELECT MAX(CAST(
-                    substr(payment_number, 
-                        length('RCP/$year/') + 1
-                    ) AS INTEGER)
-                ) as max_serial 
+            $stmt = $conn->prepare("
+                SELECT MAX(CAST(SUBSTRING(payment_number, LENGTH('RCP/$year/') + 1) AS UNSIGNED)) as max_serial 
                 FROM payments 
-                WHERE payment_number LIKE 'RCP/$year/%'
+                WHERE payment_number LIKE CONCAT('RCP/', ?, '/%')
             ");
-            $row = $result->fetchArray(SQLITE3_ASSOC);
+            $stmt->bind_param('s', $year);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
             $next_serial = ($row['max_serial'] ?? 0) + 1;
             $payment_number = "RCP/$year/" . str_pad($next_serial, 4, '0', STR_PAD_LEFT);
 
@@ -67,19 +66,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Create payment record
-            $stmt = $conn->prepare("INSERT INTO payments (invoice_id, payment_number, amount, payment_mode, reference_number, remarks) VALUES (:invoice_id, :payment_number, :amount, :payment_mode, :reference_number, :remarks)");
-            $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-            $stmt->bindValue(':payment_number', $payment_number, SQLITE3_TEXT);
-            $stmt->bindValue(':amount', $total_amount, SQLITE3_FLOAT);
-            $stmt->bindValue(':payment_mode', $payment_mode, SQLITE3_TEXT);
-            $stmt->bindValue(':reference_number', $reference_number, SQLITE3_TEXT);
-            $stmt->bindValue(':remarks', $remarks, SQLITE3_TEXT);
+            $stmt = $conn->prepare("INSERT INTO payments (invoice_id, payment_number, amount, payment_mode, reference_number, remarks) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isdsss', $invoice_id, $payment_number, $total_amount, $payment_mode, $reference_number, $remarks);
             $stmt->execute();
 
-            $payment_id = $conn->lastInsertRowID();
+            $payment_id = $conn->insert_id;
 
             // Add payment items
-            $stmt = $conn->prepare("INSERT INTO payment_items (payment_id, invoice_item_id, amount) VALUES (:payment_id, :invoice_item_id, :amount)");
+            $stmt = $conn->prepare("INSERT INTO payment_items (payment_id, invoice_item_id, amount) VALUES (?, ?, ?)");
             foreach ($fee_items as $item) {
                 if (!isset($item['selected']) || $item['selected'] != '1') continue;
                 
@@ -88,30 +82,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($amount <= 0) continue;
                 
-                $stmt->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
-                $stmt->bindValue(':invoice_item_id', $invoice_item_id, SQLITE3_INTEGER);
-                $stmt->bindValue(':amount', $amount, SQLITE3_FLOAT);
+                $stmt->bind_param('iid', $payment_id, $invoice_item_id, $amount);
                 $stmt->execute();
             }
 
             // Update invoice paid amount and balance
             $stmt = $conn->prepare("
                 UPDATE invoices 
-                SET paid_amount = paid_amount + :amount,
-                    balance = total_amount - (paid_amount + :amount),
+                SET paid_amount = paid_amount + ?,
+                    balance = total_amount - (paid_amount + ?),
                     status = CASE 
-                        WHEN (paid_amount + :amount) >= total_amount THEN 'fully_paid'
-                        WHEN (paid_amount + :amount) > 0 THEN 'partially_paid'
+                        WHEN (paid_amount + ?) >= total_amount THEN 'fully_paid'
+                        WHEN (paid_amount + ?) > 0 THEN 'partially_paid'
                         ELSE 'due'
                     END
-                WHERE id = :invoice_id
+                WHERE id = ?
             ");
-            $stmt->bindValue(':amount', $total_amount, SQLITE3_FLOAT);
-            $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
+            $stmt->bind_param('dddii', $total_amount, $total_amount, $total_amount, $total_amount, $invoice_id);
             $stmt->execute();
 
             // Commit transaction
-            $conn->exec('COMMIT');
+            $conn->commit();
 
             // Redirect to print receipt
             header('Location: print.php?id=' . $payment_id);
@@ -119,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Exception $e) {
             // Rollback on error
-            $conn->exec('ROLLBACK');
+            $conn->rollback();
             $error = 'Error recording payment: ' . $e->getMessage();
         }
     }
