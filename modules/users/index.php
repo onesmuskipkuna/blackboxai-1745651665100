@@ -11,14 +11,10 @@ $db = Database::getInstance();
 $conn = $db->getConnection();
 
 // Get all users
-$result = $conn->query("
-    SELECT id, username, email, first_name, last_name, role 
-    FROM users 
-    ORDER BY username
-");
+$result = $conn->query("SELECT id, username, email, first_name, last_name, role FROM users ORDER BY username");
 
 $users = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $users[] = $row;
 }
 
