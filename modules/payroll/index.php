@@ -15,7 +15,7 @@ $query = "SELECT * FROM payroll ORDER BY id DESC";
 $result = $conn->query($query);
 
 $payrolls = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $payrolls[] = $row;
 }
 
