@@ -23,10 +23,11 @@ if (!$student_id) {
 }
 
 // Get student details
-$stmt = $conn->prepare("SELECT * FROM students WHERE id = :id");
-$stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$student = $result->fetchArray(SQLITE3_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM students WHERE id = ?");
+$stmt->bind_param('i', $student_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$student = $result->fetch_assoc();
 
 if (!$student) {
     flashMessage('error', 'Student not found');
@@ -47,21 +48,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'All fields are required';
     } else {
         // Update student
-        $stmt = $conn->prepare("UPDATE students SET first_name = :first_name, last_name = :last_name, guardian_name = :guardian_name, phone_number = :phone_number, education_level = :education_level, class = :class, status = :status WHERE id = :id");
-        $stmt->bindValue(':first_name', $first_name, SQLITE3_TEXT);
-        $stmt->bindValue(':last_name', $last_name, SQLITE3_TEXT);
-        $stmt->bindValue(':guardian_name', $guardian_name, SQLITE3_TEXT);
-        $stmt->bindValue(':phone_number', $phone_number, SQLITE3_TEXT);
-        $stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
-        $stmt->bindValue(':class', $class, SQLITE3_TEXT);
-        $stmt->bindValue(':status', $status, SQLITE3_TEXT);
-        $stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
+        $stmt = $conn->prepare("UPDATE students SET first_name = ?, last_name = ?, guardian_name = ?, phone_number = ?, education_level = ?, class = ?, status = ? WHERE id = ?");
+        $stmt->bind_param('sssssssi', $first_name, $last_name, $guardian_name, $phone_number, $education_level, $class, $status, $student_id);
         
         if ($stmt->execute()) {
             flashMessage('success', 'Student updated successfully');
             redirect('index.php');
         } else {
-            $error = 'Error updating student: ' . $conn->lastErrorMsg();
+            $error = 'Error updating student: ' . $conn->error;
         }
     }
 }
