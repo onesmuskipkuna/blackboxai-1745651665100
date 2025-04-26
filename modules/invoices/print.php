@@ -25,11 +25,12 @@ $stmt = $conn->prepare("
            s.class, s.education_level
     FROM invoices i
     JOIN students s ON i.student_id = s.id
-    WHERE i.id = :id
+    WHERE i.id = ?
 ");
-$stmt->bindValue(':id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$invoice = $result->fetchArray(SQLITE3_ASSOC);
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$invoice = $result->fetch_assoc();
 
 if (!$invoice) {
     flashMessage('error', 'Invoice not found');
@@ -41,12 +42,13 @@ $stmt = $conn->prepare("
     SELECT ii.*, fs.fee_item
     FROM invoice_items ii
     JOIN fee_structure fs ON ii.fee_structure_id = fs.id
-    WHERE ii.invoice_id = :invoice_id
+    WHERE ii.invoice_id = ?
 ");
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
 $invoice_items = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $invoice_items[] = $row;
 }
 ?>
