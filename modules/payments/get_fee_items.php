@@ -31,17 +31,19 @@ $stmt = $conn->prepare("
     FROM invoice_items ii
     JOIN fee_structure fs ON ii.fee_structure_id = fs.id
     LEFT JOIN payment_items pi ON pi.invoice_item_id = ii.id
-    WHERE ii.invoice_id = :invoice_id
+    WHERE ii.invoice_id = ?
     GROUP BY ii.id, fs.fee_item, ii.amount
     HAVING balance > 0
     ORDER BY fs.fee_item
 ");
 
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+
+$result = $stmt->get_result();
 
 $fee_items = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $fee_items[] = $row;
 }
 
