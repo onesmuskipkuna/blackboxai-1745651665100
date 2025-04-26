@@ -22,7 +22,7 @@ if (!$class || !$education_level || !$term || !$academic_year) {
     exit;
 }
 
-// Get fee structure
+// Prepare statement
 $stmt = $conn->prepare("
     SELECT id, fee_item, amount 
     FROM fee_structure 
@@ -33,12 +33,22 @@ $stmt = $conn->prepare("
     ORDER BY fee_item
 ");
 
+if (!$stmt) {
+    echo json_encode(['error' => 'Failed to prepare statement']);
+    exit;
+}
+
 $stmt->bindValue(':class', $class, SQLITE3_TEXT);
 $stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
 $stmt->bindValue(':term', $term, SQLITE3_INTEGER);
 $stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
 
 $result = $stmt->execute();
+
+if (!$result) {
+    echo json_encode(['error' => 'Failed to execute statement']);
+    exit;
+}
 
 $fee_items = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
