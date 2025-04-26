@@ -1,6 +1,9 @@
 <?php
-define('DB_TYPE', 'sqlite');
-define('DB_PATH', __DIR__ . '/../database.sqlite');
+define('DB_TYPE', 'mysqli');
+define('DB_HOST', 'localhost');
+define('DB_USER', 'root');
+define('DB_PASS', '');
+define('DB_NAME', 'school_fees_system');
 
 // Email configuration for password reset
 define('SMTP_HOST', 'smtp.gmail.com');
