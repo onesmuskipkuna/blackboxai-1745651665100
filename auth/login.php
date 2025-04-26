@@ -22,11 +22,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db = Database::getInstance();
         $conn = $db->getConnection();
         
-        $stmt = $conn->prepare("SELECT id, username, password, first_name, last_name, role FROM users WHERE username = :username");
-        $stmt->bindValue(':username', $username, SQLITE3_TEXT);
-        $result = $stmt->execute();
+        $stmt = $conn->prepare("SELECT id, username, password, first_name, last_name, role FROM users WHERE username = ?");
+        $stmt->bind_param('s', $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        if ($user = $result->fetchArray(SQLITE3_ASSOC)) {
+        if ($user = $result->fetch_assoc()) {
             if (password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
@@ -39,9 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     setcookie('remember_token', $token, time() + (30 * 24 * 60 * 60), '/');
                     
                     // Store token in database
-                    $stmt = $conn->prepare("UPDATE users SET remember_token = :token WHERE id = :id");
-                    $stmt->bindValue(':token', $token, SQLITE3_TEXT);
-                    $stmt->bindValue(':id', $user['id'], SQLITE3_INTEGER);
+                    $stmt = $conn->prepare("UPDATE users SET remember_token = ? WHERE id = ?");
+                    $stmt->bind_param('si', $token, $user['id']);
                     $stmt->execute();
                 }
                 
