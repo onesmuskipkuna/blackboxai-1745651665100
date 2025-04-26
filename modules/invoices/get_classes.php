@@ -19,12 +19,14 @@ if (!$education_level) {
 }
 
 // Fetch distinct classes for the selected education level
-$stmt = $conn->prepare("SELECT DISTINCT class FROM students WHERE education_level = :education_level AND status = 'active' ORDER BY class");
-$stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
-$result = $stmt->execute();
+$stmt = $conn->prepare("SELECT DISTINCT class FROM students WHERE education_level = ? AND status = 'active' ORDER BY class");
+$stmt->bind_param('s', $education_level);
+$stmt->execute();
+
+$result = $stmt->get_result();
 
 $classes = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $classes[] = $row['class'];
 }
 
