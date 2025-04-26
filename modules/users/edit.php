@@ -21,10 +21,11 @@ if (!$user_id) {
 }
 
 // Fetch user data
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = :id");
-$stmt->bindValue(':id', $user_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$user = $result->fetchArray(SQLITE3_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$user = $result->fetch_assoc();
 
 if (!$user) {
     header('Location: index.php');
@@ -50,29 +51,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Password does not meet strength requirements';
     } else {
         // Check if username or email already exists for other users
-        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE (username = :username OR email = :email) AND id != :id");
-        $stmt->bindValue(':username', $username, SQLITE3_TEXT);
-        $stmt->bindValue(':email', $email, SQLITE3_TEXT);
-        $stmt->bindValue(':id', $user_id, SQLITE3_INTEGER);
-        $result = $stmt->execute();
-        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE (username = ? OR email = ?) AND id != ?");
+        $stmt->bind_param('ssi', $username, $email, $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         if ($row['count'] > 0) {
             $error = 'Username or email already exists';
         } else {
             // Update user
             if ($password) {
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $conn->prepare("UPDATE users SET username = :username, email = :email, first_name = :first_name, last_name = :last_name, role = :role, password = :password WHERE id = :id");
-                $stmt->bindValue(':password', $password_hash, SQLITE3_TEXT);
+                $stmt = $conn->prepare("UPDATE users SET username = ?, email = ?, first_name = ?, last_name = ?, role = ?, password = ? WHERE id = ?");
+                $stmt->bind_param('ssssssi', $username, $email, $first_name, $last_name, $role, $password_hash, $user_id);
             } else {
-                $stmt = $conn->prepare("UPDATE users SET username = :username, email = :email, first_name = :first_name, last_name = :last_name, role = :role WHERE id = :id");
+                $stmt = $conn->prepare("UPDATE users SET username = ?, email = ?, first_name = ?, last_name = ?, role = ? WHERE id = ?");
+                $stmt->bind_param('sssssi', $username, $email, $first_name, $last_name, $role, $user_id);
             }
-            $stmt->bindValue(':username', $username, SQLITE3_TEXT);
-            $stmt->bindValue(':email', $email, SQLITE3_TEXT);
-            $stmt->bindValue(':first_name', $first_name, SQLITE3_TEXT);
-            $stmt->bindValue(':last_name', $last_name, SQLITE3_TEXT);
-            $stmt->bindValue(':role', $role, SQLITE3_TEXT);
-            $stmt->bindValue(':id', $user_id, SQLITE3_INTEGER);
             $stmt->execute();
 
             flashMessage('success', 'User updated successfully');
