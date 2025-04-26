@@ -32,23 +32,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Password does not meet strength requirements';
     } else {
         // Check if username or email already exists
-        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE username = :username OR email = :email");
-        $stmt->bindValue(':username', $username, SQLITE3_TEXT);
-        $stmt->bindValue(':email', $email, SQLITE3_TEXT);
-        $result = $stmt->execute();
-        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM users WHERE username = ? OR email = ?");
+        $stmt->bind_param('ss', $username, $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         if ($row['count'] > 0) {
             $error = 'Username or email already exists';
         } else {
             // Insert new user
             $password_hash = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("INSERT INTO users (username, email, first_name, last_name, role, password) VALUES (:username, :email, :first_name, :last_name, :role, :password)");
-            $stmt->bindValue(':username', $username, SQLITE3_TEXT);
-            $stmt->bindValue(':email', $email, SQLITE3_TEXT);
-            $stmt->bindValue(':first_name', $first_name, SQLITE3_TEXT);
-            $stmt->bindValue(':last_name', $last_name, SQLITE3_TEXT);
-            $stmt->bindValue(':role', $role, SQLITE3_TEXT);
-            $stmt->bindValue(':password', $password_hash, SQLITE3_TEXT);
+            $stmt = $conn->prepare("INSERT INTO users (username, email, first_name, last_name, role, password) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('ssssss', $username, $email, $first_name, $last_name, $role, $password_hash);
             $stmt->execute();
 
             flashMessage('success', 'User added successfully');
