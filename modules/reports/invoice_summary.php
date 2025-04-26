@@ -17,13 +17,13 @@ $whereClauses = [];
 $params = [];
 
 if ($term > 0) {
-    $whereClauses[] = 'i.term = :term';
-    $params[':term'] = $term;
+    $whereClauses[] = 'i.term = ?';
+    $params[] = $term;
 }
 
 if ($academic_year) {
-    $whereClauses[] = 'i.academic_year = :academic_year';
-    $params[':academic_year'] = $academic_year;
+    $whereClauses[] = 'i.academic_year = ?';
+    $params[] = $academic_year;
 }
 
 $whereSql = '';
@@ -52,22 +52,24 @@ $query = "
 
 $stmt = $conn->prepare($query);
 
-foreach ($params as $key => $value) {
-    if ($key === ':term') {
-        $stmt->bindValue($key, $value, SQLITE3_INTEGER);
-    } else {
-        $stmt->bindValue($key, $value, SQLITE3_TEXT);
+if (!empty($params)) {
+    $types = '';
+    foreach ($params as $param) {
+        $types .= is_int($param) ? 'i' : 's';
     }
+    $stmt->bind_param($types, ...$params);
 }
 
-$result = $stmt->execute();
+$stmt->execute();
+
+$result = $stmt->get_result();
 
 $invoices = [];
 $total_amount = 0;
 $total_paid = 0;
 $total_balance = 0;
 
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $invoices[] = $row;
     $total_amount += $row['total_amount'];
     $total_paid += $row['paid_amount'];
