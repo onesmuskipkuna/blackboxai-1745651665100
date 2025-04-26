@@ -23,16 +23,18 @@ if (!$student_id) {
 $stmt = $conn->prepare("
     SELECT id, invoice_number, total_amount, paid_amount, balance, term, academic_year
     FROM invoices 
-    WHERE student_id = :student_id 
+    WHERE student_id = ? 
     AND status != 'fully_paid'
     ORDER BY created_at DESC
 ");
 
-$stmt->bindValue(':student_id', $student_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt->bind_param('i', $student_id);
+$stmt->execute();
+
+$result = $stmt->get_result();
 
 $invoices = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $invoices[] = $row;
 }
 
