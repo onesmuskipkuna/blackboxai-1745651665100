@@ -21,7 +21,7 @@ $students_result = $conn->query("
     ORDER BY admission_number
 ");
 $students = [];
-while ($row = $students_result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $students_result->fetch_assoc()) {
     $students[] = $row;
 }
 
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log("No items were selected or all selected items had zero amounts");
         } else {
             // Begin transaction
-            $conn->exec('BEGIN');
+            $conn->begin_transaction();
             
             try {
                 // Generate invoice number (INV/YEAR/SERIAL)
@@ -62,10 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $next_serial = 1;
                 while (true) {
                     $invoice_number = "INV/$year/" . str_pad($next_serial, 4, '0', STR_PAD_LEFT);
-                    $check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM invoices WHERE invoice_number = :invoice_number");
-                    $check_stmt->bindValue(':invoice_number', $invoice_number, SQLITE3_TEXT);
-                    $check_result = $check_stmt->execute();
-                    $check_row = $check_result->fetchArray(SQLITE3_ASSOC);
+                    $check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM invoices WHERE invoice_number = ?");
+                    $check_stmt->bind_param('s', $invoice_number);
+                    $check_stmt->execute();
+                    $check_result = $check_stmt->get_result();
+                    $check_row = $check_result->fetch_assoc();
                     if ($check_row['count'] == 0) {
                         break;
                     }
@@ -83,15 +84,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $balance_items = [];
                 $prev_invoices_stmt = $conn->prepare("
                     SELECT balance, id FROM invoices 
-                    WHERE student_id = :student_id 
-                    AND (academic_year < :academic_year OR (academic_year = :academic_year AND term < :term))
+                    WHERE student_id = ? 
+                    AND (academic_year < ? OR (academic_year = ? AND term < ?))
                     AND balance > 0
                 ");
-                $prev_invoices_stmt->bindValue(':student_id', $student_id, SQLITE3_INTEGER);
-                $prev_invoices_stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
-                $prev_invoices_stmt->bindValue(':term', $term, SQLITE3_INTEGER);
-                $prev_invoices_result = $prev_invoices_stmt->execute();
-                while ($row = $prev_invoices_result->fetchArray(SQLITE3_ASSOC)) {
+                $prev_invoices_stmt->bind_param('issi', $student_id, $academic_year, $academic_year, $term);
+                $prev_invoices_stmt->execute();
+                $prev_invoices_result = $prev_invoices_stmt->get_result();
+                while ($row = $prev_invoices_result->fetch_assoc()) {
                     $balance_carry_forward += $row['balance'];
                     $balance_items[] = $row['id'];
                 }
@@ -102,45 +102,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Create invoice
-                $stmt = $conn->prepare("INSERT INTO invoices (student_id, invoice_number, total_amount, balance, term, academic_year, due_date) VALUES (:student_id, :invoice_number, :total_amount, :balance, :term, :academic_year, :due_date)");
-                $stmt->bindValue(':student_id', $student_id, SQLITE3_INTEGER);
-                $stmt->bindValue(':invoice_number', $invoice_number, SQLITE3_TEXT);
-                $stmt->bindValue(':total_amount', $total_amount, SQLITE3_FLOAT);
-                $stmt->bindValue(':balance', $total_amount, SQLITE3_FLOAT);
-                $stmt->bindValue(':term', $term, SQLITE3_INTEGER);
-                $stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
-                $stmt->bindValue(':due_date', $due_date, SQLITE3_TEXT);
+                $stmt = $conn->prepare("INSERT INTO invoices (student_id, invoice_number, total_amount, balance, term, academic_year, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param('isddiss', $student_id, $invoice_number, $total_amount, $total_amount, $term, $academic_year, $due_date);
                 $stmt->execute();
                 
-                $invoice_id = $conn->lastInsertRowID();
+                $invoice_id = $conn->insert_id;
                 
                 // Add selected invoice items
-                $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (:invoice_id, :fee_structure_id, :amount)");
+                $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (?, ?, ?)");
                 foreach ($selected_items as $item) {
                     $fee_id = (int)$item['fee_id'];
                     $amount = (float)$item['amount'];
-                    $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-                    $stmt->bindValue(':fee_structure_id', $fee_id, SQLITE3_INTEGER);
-                    $stmt->bindValue(':amount', $amount, SQLITE3_FLOAT);
+                    $stmt->bind_param('iid', $invoice_id, $fee_id, $amount);
                     $stmt->execute();
                 }
                 
                 // Add balance carry forward as a special fee item if any
                 if ($balance_carry_forward > 0) {
-                    $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (:invoice_id, NULL, :amount)");
-                    $stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-                    $stmt->bindValue(':amount', $balance_carry_forward, SQLITE3_FLOAT);
+                    $stmt = $conn->prepare("INSERT INTO invoice_items (invoice_id, fee_structure_id, amount) VALUES (?, NULL, ?)");
+                    $stmt->bind_param('id', $invoice_id, $balance_carry_forward);
                     $stmt->execute();
                 }
                 
                 // Commit transaction
-                $conn->exec('COMMIT');
+                $conn->commit();
                 flashMessage('success', 'Invoice created successfully');
                 redirect('index.php');
                 
             } catch (Exception $e) {
                 // Rollback on error
-                $conn->exec('ROLLBACK');
+                $conn->rollback();
                 $error = 'Error creating invoice: ' . $e->getMessage();
             }
         }
