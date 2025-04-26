@@ -25,11 +25,12 @@ $stmt = $conn->prepare("
            s.class, s.education_level
     FROM invoices i
     JOIN students s ON i.student_id = s.id
-    WHERE i.id = :invoice_id
+    WHERE i.id = ?
 ");
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$invoice = $result->fetchArray(SQLITE3_ASSOC);
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$invoice = $result->fetch_assoc();
 
 if (!$invoice) {
     flashMessage('error', 'Invoice not found');
@@ -41,13 +42,14 @@ $stmt = $conn->prepare("
     SELECT ii.*, fs.fee_item
     FROM invoice_items ii
     LEFT JOIN fee_structure fs ON ii.fee_structure_id = fs.id
-    WHERE ii.invoice_id = :invoice_id
+    WHERE ii.invoice_id = ?
 ");
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
 
 $invoice_items = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     // Handle NULL fee_structure_id for balance carry forward
     if ($row['fee_structure_id'] === null) {
         $row['fee_item'] = 'Balance Carried Forward';
@@ -62,14 +64,15 @@ $stmt = $conn->prepare("
     LEFT JOIN payment_items pi ON p.id = pi.payment_id
     LEFT JOIN invoice_items ii ON pi.invoice_item_id = ii.id
     LEFT JOIN fee_structure fs ON ii.fee_structure_id = fs.id
-    WHERE p.invoice_id = :invoice_id
+    WHERE p.invoice_id = ?
     ORDER BY p.created_at DESC
 ");
-$stmt->bindValue(':invoice_id', $invoice_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
+$stmt->bind_param('i', $invoice_id);
+$stmt->execute();
+$result = $stmt->get_result();
 
 $payments = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $payments[] = $row;
 }
 
