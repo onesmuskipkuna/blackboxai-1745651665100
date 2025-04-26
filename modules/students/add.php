@@ -27,26 +27,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Generate admission number (Year/Serial Number format)
         $year = date('Y');
-        $result = $conn->query("SELECT MAX(CAST(substr(admission_number, instr(admission_number, '/') + 1) AS INTEGER)) as max_serial FROM students WHERE admission_number LIKE '$year/%'");
-        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(admission_number, '/', -1) AS UNSIGNED)) as max_serial FROM students WHERE admission_number LIKE CONCAT(?, '/%')");
+        $stmt->bind_param('s', $year);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         $next_serial = ($row['max_serial'] ?? 0) + 1;
         $admission_number = $year . '/' . str_pad($next_serial, 4, '0', STR_PAD_LEFT);
         
         // Insert student
-        $stmt = $conn->prepare("INSERT INTO students (admission_number, first_name, last_name, guardian_name, phone_number, education_level, class) VALUES (:admission_number, :first_name, :last_name, :guardian_name, :phone_number, :education_level, :class)");
-        $stmt->bindValue(':admission_number', $admission_number, SQLITE3_TEXT);
-        $stmt->bindValue(':first_name', $first_name, SQLITE3_TEXT);
-        $stmt->bindValue(':last_name', $last_name, SQLITE3_TEXT);
-        $stmt->bindValue(':guardian_name', $guardian_name, SQLITE3_TEXT);
-        $stmt->bindValue(':phone_number', $phone_number, SQLITE3_TEXT);
-        $stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
-        $stmt->bindValue(':class', $class, SQLITE3_TEXT);
+        $stmt = $conn->prepare("INSERT INTO students (admission_number, first_name, last_name, guardian_name, phone_number, education_level, class) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('sssssss', $admission_number, $first_name, $last_name, $guardian_name, $phone_number, $education_level, $class);
         
         if ($stmt->execute()) {
             flashMessage('success', 'Student added successfully.');
             redirect('index.php');
         } else {
-            $error = 'Error adding student: ' . $conn->lastErrorMsg();
+            $error = 'Error adding student: ' . $conn->error;
         }
     }
 }
