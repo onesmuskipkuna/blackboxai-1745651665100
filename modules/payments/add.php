@@ -32,13 +32,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $student_id = (int)$_POST['student_id'];
     $invoice_id = (int)$_POST['invoice_id'];
     $payment_mode = sanitize($_POST['payment_mode']);
-    $reference_number = sanitize($_POST['reference_number']);
+    $reference_number = sanitize($_POST['reference_number']); 
     $remarks = sanitize($_POST['remarks']);
     $fee_items = isset($_POST['fee_items']) ? $_POST['fee_items'] : [];
 
     if (!$student_id || !$invoice_id || !$payment_mode || empty($fee_items)) {
-        $error = 'All fields are required';
+        $error = 'Student, invoice, and payment mode are required';
     } else {
+        // Validate fee items before processing
+        $valid_items = false;
+        $total_amount = 0;
+        
+        foreach ($fee_items as $item) {
+            if (isset($item['selected']) && $item['selected'] == '1') {
+                $valid_items = true;
+                $amount = isset($item['amount']) && $item['amount'] !== '' ? (float)$item['amount'] : 0;
+                if ($amount < 0) {
+                    $error = 'Amount cannot be negative';
+                    break;
+                }
+                $total_amount += $amount;
+            }
+        }
+        
+        if (!$valid_items) {
+            $error = 'Please select at least one fee item to pay';
+        } elseif ($total_amount <= 0) {
+            $error = 'Total payment amount must be greater than 0';
+        }
+    }
+
+    if (!$error) {
         // Begin transaction
         $conn->begin_transaction();
 
@@ -57,14 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $next_serial = ($row['max_serial'] ?? 0) + 1;
             $payment_number = "RCP/$year/" . str_pad($next_serial, 4, '0', STR_PAD_LEFT);
 
-            // Calculate total payment amount
-            $total_amount = 0;
-            foreach ($fee_items as $item) {
-                if (isset($item['selected']) && $item['selected'] == '1' && isset($item['amount'])) {
-                    $total_amount += (float)$item['amount'];
-                }
-            }
-
             // Create payment record
             $stmt = $conn->prepare("INSERT INTO payments (invoice_id, payment_number, amount, payment_mode, reference_number, remarks) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->bind_param('isdsss', $invoice_id, $payment_number, $total_amount, $payment_mode, $reference_number, $remarks);
@@ -72,8 +88,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $payment_id = $conn->insert_id;
 
-            // Add payment items
+            // Add payment items and update invoice item balances
             $stmt = $conn->prepare("INSERT INTO payment_items (payment_id, invoice_item_id, amount) VALUES (?, ?, ?)");
+            
+            // Get current invoice total paid amount
+            $stmt_invoice = $conn->prepare("
+                SELECT total_amount, paid_amount 
+                FROM invoices 
+                WHERE id = ?
+            ");
+            $stmt_invoice->bind_param('i', $invoice_id);
+            $stmt_invoice->execute();
+            $result = $stmt_invoice->get_result();
+            $invoice_data = $result->fetch_assoc();
+            $current_paid = $invoice_data['paid_amount'];
+            $total_invoice_amount = $invoice_data['total_amount'];
+
+            // Process each fee item
             foreach ($fee_items as $item) {
                 if (!isset($item['selected']) || $item['selected'] != '1') continue;
                 
@@ -82,23 +113,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($amount <= 0) continue;
                 
+                // Insert payment item
                 $stmt->bind_param('iid', $payment_id, $invoice_item_id, $amount);
                 $stmt->execute();
+                
+                // Update current paid amount
+                $current_paid += $amount;
+            }
+
+            // Calculate new balance and status
+            $new_balance = $total_invoice_amount - $current_paid;
+            $new_status = 'due';
+            if ($current_paid >= $total_invoice_amount) {
+                $new_status = 'fully_paid';
+            } elseif ($current_paid > 0) {
+                $new_status = 'partially_paid';
             }
 
             // Update invoice paid amount and balance
             $stmt = $conn->prepare("
                 UPDATE invoices 
-                SET paid_amount = paid_amount + ?,
-                    balance = total_amount - (paid_amount + ?),
-                    status = CASE 
-                        WHEN (paid_amount + ?) >= total_amount THEN 'fully_paid'
-                        WHEN (paid_amount + ?) > 0 THEN 'partially_paid'
-                        ELSE 'due'
-                    END
+                SET paid_amount = ?,
+                    balance = ?,
+                    status = ?
                 WHERE id = ?
             ");
-            $stmt->bind_param('dddii', $total_amount, $total_amount, $total_amount, $total_amount, $invoice_id);
+            $stmt->bind_param('ddsi', $current_paid, $new_balance, $new_status, $invoice_id);
             $stmt->execute();
 
             // Commit transaction
@@ -138,18 +178,13 @@ require_once '../../includes/navigation.php';
         <div class="mt-6 bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
             <form method="POST" id="paymentForm" class="space-y-6">
                 <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
-                    <div>
-                        <label for="student_id" class="block text-sm font-medium text-gray-700">Student</label>
-                        <select id="student_id" name="student_id" required
-                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
-                            <option value="">Select Student</option>
-                            <?php foreach ($students as $student): ?>
-                                <option value="<?php echo $student['id']; ?>">
-                                    <?php echo htmlspecialchars($student['admission_number'] . ' - ' . $student['first_name'] . ' ' . $student['last_name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+<div>
+    <label for="student_search" class="block text-sm font-medium text-gray-700">Student</label>
+    <input type="text" id="student_search" name="student_search" placeholder="Search by phone number or name" autocomplete="off"
+           class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+    <input type="hidden" id="student_id" name="student_id" required />
+    <div id="student_search_results" class="border border-gray-300 rounded-md mt-1 max-h-48 overflow-y-auto hidden bg-white z-10 absolute w-full"></div>
+</div>
 
                     <div id="invoiceContainer" class="hidden">
                         <label for="invoice_id" class="block text-sm font-medium text-gray-700">Invoice</label>
@@ -167,6 +202,7 @@ require_once '../../includes/navigation.php';
                             <option value="cash">Cash</option>
                             <option value="mpesa">M-Pesa</option>
                             <option value="bank">Bank</option>
+                            <option value="waiver">Waiver</option>
                         </select>
                     </div>
 
@@ -174,7 +210,7 @@ require_once '../../includes/navigation.php';
                         <label for="reference_number" class="block text-sm font-medium text-gray-700">Reference Number</label>
                         <input type="text" name="reference_number" id="reference_number"
                                class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                               placeholder="Transaction/Receipt Number">
+                               placeholder="Transaction/Receipt Number (Optional)">
                     </div>
 
                     <div class="sm:col-span-2">
@@ -210,48 +246,257 @@ require_once '../../includes/navigation.php';
 </div>
 
 <script>
-document.getElementById('student_id').addEventListener('change', function() {
-    const studentId = this.value;
+document.addEventListener('DOMContentLoaded', function() {
+    const studentSearchInput = document.getElementById('student_search');
+    const studentSearchResults = document.getElementById('student_search_results');
+    const studentIdInput = document.getElementById('student_id');
     const invoiceContainer = document.getElementById('invoiceContainer');
     const invoiceSelect = document.getElementById('invoice_id');
     const feeItemsContainer = document.getElementById('feeItemsContainer');
     const totalAmount = document.getElementById('totalAmount');
 
-    invoiceSelect.innerHTML = '<option value="">Select Invoice</option>';
-    feeItemsContainer.innerHTML = '';
-    totalAmount.textContent = '0.00';
+    let debounceTimeout = null;
 
-    if (!studentId) {
+    studentSearchInput.addEventListener('input', function() {
+        const query = this.value.trim();
+
+        studentIdInput.value = '';
         invoiceContainer.classList.add('hidden');
-        return;
+        invoiceSelect.innerHTML = '<option value="">Select Invoice</option>';
+        feeItemsContainer.innerHTML = '';
+        totalAmount.textContent = '0.00';
+
+        if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+        }
+
+        if (query.length < 2) {
+            studentSearchResults.classList.add('hidden');
+            studentSearchResults.innerHTML = '';
+            return;
+        }
+
+        debounceTimeout = setTimeout(() => {
+            fetch(`search_students.php?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    studentSearchResults.innerHTML = '';
+                    if (data.results.length > 0) {
+                        data.results.forEach(student => {
+                            const div = document.createElement('div');
+                            div.className = 'px-3 py-2 cursor-pointer hover:bg-gray-100';
+                            div.textContent = student.text;
+                            div.dataset.studentId = student.id;
+                            div.addEventListener('click', () => {
+                                studentSearchInput.value = div.textContent;
+                                studentIdInput.value = div.dataset.studentId;
+                                studentSearchResults.classList.add('hidden');
+                                loadInvoices(div.dataset.studentId);
+                            });
+                            studentSearchResults.appendChild(div);
+                        });
+                        studentSearchResults.classList.remove('hidden');
+                    } else {
+                        studentSearchResults.classList.add('hidden');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching students:', error);
+                    studentSearchResults.classList.add('hidden');
+                });
+        }, 300);
+    });
+
+    document.addEventListener('click', function(event) {
+        if (!studentSearchResults.contains(event.target) && event.target !== studentSearchInput) {
+            studentSearchResults.classList.add('hidden');
+        }
+    });
+
+    function loadInvoices(studentId) {
+        invoiceSelect.innerHTML = '<option value="">Select Invoice</option>';
+        feeItemsContainer.innerHTML = '';
+        totalAmount.textContent = '0.00';
+        invoiceContainer.classList.add('hidden');
+
+        if (!studentId) return;
+
+        fetch(`get_invoices.php?student_id=${studentId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok: ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.length > 0) {
+                    invoiceContainer.classList.remove('hidden');
+                    data.forEach(invoice => {
+                        const option = document.createElement('option');
+                        option.value = invoice.id;
+                        option.textContent = `${invoice.invoice_number} - Balance: KES ${parseFloat(invoice.balance).toFixed(2)}`;
+                        invoiceSelect.appendChild(option);
+                    });
+                } else {
+                    invoiceContainer.classList.add('hidden');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading invoices:', error);
+                alert('Error loading invoices: ' + error.message);
+            });
     }
 
-    fetch(`get_invoices.php?student_id=${studentId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok: ' + response.statusText);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Invoices data:', data);
-            if (data.length > 0) {
-                invoiceContainer.classList.remove('hidden');
-                data.forEach(invoice => {
-                    const option = document.createElement('option');
-                    option.value = invoice.id;
-                    option.textContent = `${invoice.invoice_number} - Balance: KES ${parseFloat(invoice.balance).toFixed(2)}`;
-                    invoiceSelect.appendChild(option);
+    document.getElementById('invoice_id').addEventListener('change', function() {
+        const invoiceId = this.value;
+        feeItemsContainer.innerHTML = '';
+        totalAmount.textContent = '0.00';
+
+        if (!invoiceId) return;
+
+        fetch(`get_fee_items.php?invoice_id=${invoiceId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok: ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(data => {
+                data.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-4 border-b pb-4';
+                    div.innerHTML = `
+                        <div class="sm:col-span-1 flex items-center">
+                            <input type="checkbox" name="fee_items[${index}][selected]" value="1" class="mr-2 checkbox-select" checked onchange="toggleAmountInput(this)">
+                            <label class="block text-sm font-medium text-gray-700">${item.fee_item}</label>
+                            <input type="hidden" name="fee_items[${index}][invoice_item_id]" value="${item.id}">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-sm font-medium text-gray-700">Original Amount: KES ${parseFloat(item.original_amount).toFixed(2)}</label>
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-sm font-medium text-gray-700">Paid: KES ${parseFloat(item.paid_amount).toFixed(2)}</label>
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-sm font-medium text-gray-700">Amount to Pay</label>
+                            <input type="number" name="fee_items[${index}][amount]" min="0" step="0.01"
+                                   class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md fee-amount"
+                                   onchange="calculateTotal()" onkeyup="calculateTotal()" 
+                                   oninput="this.value = this.value.replace(/[^0-9.]/g, '').replace(/(\\..*)\\./g, '$1');"
+                                   placeholder="Enter amount (optional)">
+                        </div>
+                    `;
+                    feeItemsContainer.appendChild(div);
                 });
-            } else {
-                invoiceContainer.classList.add('hidden');
+            })
+            .catch(error => {
+                console.error('Error loading fee items:', error);
+                alert('Error loading fee items: ' + error.message);
+            });
+    });
+
+    function toggleAmountInput(checkbox) {
+        const container = checkbox.closest('.grid');
+        const amountInput = container.querySelector('.fee-amount');
+        if (checkbox.checked) {
+            amountInput.disabled = false;
+        } else {
+            amountInput.disabled = true;
+            amountInput.value = '';
+            calculateTotal();
+        }
+    }
+
+    function calculateTotal() {
+        const amounts = document.getElementsByClassName('fee-amount');
+        let total = 0;
+
+        for (let amount of amounts) {
+            if (!amount.disabled) {
+                const value = parseFloat(amount.value);
+                
+                // Only validate for negative values
+                if (!isNaN(value)) {
+                    if (value < 0) {
+                        amount.classList.add('border-red-500');
+                        const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                        if (!warningDiv) {
+                            const warning = document.createElement('div');
+                            warning.className = 'text-red-500 text-xs mt-1 amount-warning';
+                            warning.textContent = 'Amount cannot be negative';
+                            amount.parentElement.appendChild(warning);
+                        }
+                    } else {
+                        amount.classList.remove('border-red-500');
+                        const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                        if (warningDiv) {
+                            warningDiv.remove();
+                        }
+                        total += value;
+                    }
+                } else {
+                    // Remove any warning for empty values since they're now optional
+                    amount.classList.remove('border-red-500');
+                    const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                    if (warningDiv) {
+                        warningDiv.remove();
+                    }
+                }
             }
-        })
-        .catch(error => {
-            console.error('Error loading invoices:', error);
-            alert('Error loading invoices: ' + error.message);
-        });
+        }
+
+        document.getElementById('totalAmount').textContent = total.toFixed(2);
+    }
+
+    // Form validation
+    document.getElementById('paymentForm').addEventListener('submit', function(e) {
+        const feeItems = document.getElementsByClassName('fee-amount');
+        if (feeItems.length === 0) {
+            e.preventDefault();
+            alert('Please select an invoice to load fee items');
+            return;
+        }
+
+        let total = 0;
+        let hasSelectedItems = false;
+        let hasInvalidAmount = false;
+
+        for (let item of feeItems) {
+            if (!item.disabled) {
+                hasSelectedItems = true;
+                const amount = parseFloat(item.value);
+                
+                // Only validate if amount is entered and check for negative values
+                if (!isNaN(amount)) {
+                    if (amount < 0) {
+                        hasInvalidAmount = true;
+                        break;
+                    }
+                    total += amount;
+                }
+            }
+        }
+
+        if (!hasSelectedItems) {
+            e.preventDefault();
+            alert('Please select at least one fee item to pay');
+            return;
+        }
+
+        if (hasInvalidAmount) {
+            e.preventDefault();
+            alert('Please enter valid payment amounts. Amount cannot be negative.');
+            return;
+        }
+
+        if (total === 0) {
+            e.preventDefault();
+            alert('Total payment amount cannot be zero. Please enter at least one amount.');
+            return;
+        }
+    });
 });
+</script>
 
 document.getElementById('invoice_id').addEventListener('change', function() {
     const invoiceId = this.value;
@@ -282,13 +527,18 @@ document.getElementById('invoice_id').addEventListener('change', function() {
                         <input type="hidden" name="fee_items[${index}][invoice_item_id]" value="${item.id}">
                     </div>
                     <div class="sm:col-span-1">
-                        <label class="block text-sm font-medium text-gray-700">Balance: KES ${parseFloat(item.balance).toFixed(2)}</label>
+                        <label class="block text-sm font-medium text-gray-700">Original Amount: KES ${parseFloat(item.original_amount).toFixed(2)}</label>
+                    </div>
+                    <div class="sm:col-span-1">
+                        <label class="block text-sm font-medium text-gray-700">Paid: KES ${parseFloat(item.paid_amount).toFixed(2)}</label>
                     </div>
                     <div class="sm:col-span-1">
                         <label class="block text-sm font-medium text-gray-700">Amount to Pay</label>
-                        <input type="number" name="fee_items[${index}][amount]" required min="0" max="${item.balance}" step="0.01"
+                        <input type="number" name="fee_items[${index}][amount]" min="0" step="0.01"
                                class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md fee-amount"
-                               onchange="calculateTotal()" onkeyup="calculateTotal()">
+                               onchange="calculateTotal()" onkeyup="calculateTotal()" 
+                               oninput="this.value = this.value.replace(/[^0-9.]/g, '').replace(/(\\..*)\\./g, '$1');"
+                               placeholder="Enter amount (optional)">
                     </div>
                 `;
                 feeItemsContainer.appendChild(div);
@@ -301,13 +551,12 @@ document.getElementById('invoice_id').addEventListener('change', function() {
 });
 
 function toggleAmountInput(checkbox) {
-    const amountInput = checkbox.closest('div').nextElementSibling.nextElementSibling.querySelector('input[type="number"]');
+    const container = checkbox.closest('.grid');
+    const amountInput = container.querySelector('.fee-amount');
     if (checkbox.checked) {
         amountInput.disabled = false;
-        amountInput.required = true;
     } else {
         amountInput.disabled = true;
-        amountInput.required = false;
         amountInput.value = '';
         calculateTotal();
     }
@@ -319,7 +568,35 @@ function calculateTotal() {
 
     for (let amount of amounts) {
         if (!amount.disabled) {
-            total += parseFloat(amount.value) || 0;
+            const value = parseFloat(amount.value);
+            
+            // Only validate for negative values
+            if (!isNaN(value)) {
+                if (value < 0) {
+                    amount.classList.add('border-red-500');
+                    const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                    if (!warningDiv) {
+                        const warning = document.createElement('div');
+                        warning.className = 'text-red-500 text-xs mt-1 amount-warning';
+                        warning.textContent = 'Amount cannot be negative';
+                        amount.parentElement.appendChild(warning);
+                    }
+                } else {
+                    amount.classList.remove('border-red-500');
+                    const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                    if (warningDiv) {
+                        warningDiv.remove();
+                    }
+                    total += value;
+                }
+            } else {
+                // Remove any warning for empty values since they're now optional
+                amount.classList.remove('border-red-500');
+                const warningDiv = amount.parentElement.querySelector('.amount-warning');
+                if (warningDiv) {
+                    warningDiv.remove();
+                }
+            }
         }
     }
 
@@ -337,16 +614,21 @@ document.getElementById('paymentForm').addEventListener('submit', function(e) {
 
     let total = 0;
     let hasSelectedItems = false;
+    let hasInvalidAmount = false;
 
     for (let item of feeItems) {
         if (!item.disabled) {
             hasSelectedItems = true;
-            if (!item.value || parseFloat(item.value) < 0 || parseFloat(item.value) > parseFloat(item.max)) {
-                e.preventDefault();
-                alert('Invalid payment amount. Amount must be between 0 and the remaining balance.');
-                return;
+            const amount = parseFloat(item.value);
+            
+            // Only validate if amount is entered and check for negative values
+            if (!isNaN(amount)) {
+                if (amount < 0) {
+                    hasInvalidAmount = true;
+                    break;
+                }
+                total += amount;
             }
-            total += parseFloat(item.value);
         }
     }
 
@@ -356,18 +638,15 @@ document.getElementById('paymentForm').addEventListener('submit', function(e) {
         return;
     }
 
-    if (total <= 0) {
+    if (hasInvalidAmount) {
         e.preventDefault();
-        alert('Total payment amount must be greater than 0');
+        alert('Please enter valid payment amounts. Amount cannot be negative.');
         return;
     }
 
-    const paymentMode = document.getElementById('payment_mode').value;
-    const reference = document.getElementById('reference_number').value;
-
-    if ((paymentMode === 'mpesa' || paymentMode === 'bank') && !reference) {
+    if (total === 0) {
         e.preventDefault();
-        alert('Reference number is required for M-Pesa and Bank payments');
+        alert('Total payment amount cannot be zero. Please enter at least one amount.');
         return;
     }
 });
