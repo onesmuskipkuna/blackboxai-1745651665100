@@ -19,42 +19,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $class = sanitize($_POST['class']);
     $term = (int)$_POST['term'];
     $academic_year = sanitize($_POST['academic_year']);
-    $fee_items = $_POST['fee_items'];
-    $amounts = $_POST['amounts'];
+    $fee_items = isset($_POST['fee_items']) ? $_POST['fee_items'] : array();
+    $amounts = isset($_POST['amounts']) ? $_POST['amounts'] : array();
     
-    if (empty($education_level) || empty($class) || empty($term) || empty($academic_year) || empty($fee_items) || empty($amounts)) {
-        $error = 'All fields are required';
+    if (empty($education_level)) {
+        $error = 'Education level is required';
+    } elseif (empty($class)) {
+        $error = 'Class is required';
+    } elseif (empty($term)) {
+        $error = 'Term is required';
+    } elseif (empty($academic_year)) {
+        $error = 'Academic year is required';
+    } elseif (empty($fee_items) || !is_array($fee_items) || empty($amounts) || !is_array($amounts)) {
+        $error = 'At least one fee item with amount is required';
     } else {
         // Begin transaction
-        $conn->exec('BEGIN');
+        $conn->begin_transaction();
         
         try {
+            // Validate fee items
+            $valid_items = false;
+            for ($i = 0; $i < count($fee_items); $i++) {
+                if (!empty($fee_items[$i]) && isset($amounts[$i]) && $amounts[$i] > 0) {
+                    $valid_items = true;
+                    break;
+                }
+            }
+
+            if (!$valid_items) {
+                throw new Exception('At least one valid fee item with amount greater than 0 is required');
+            }
+
             // Insert each fee item
-            $stmt = $conn->prepare("INSERT INTO fee_structure (education_level, class, term, academic_year, fee_item, amount) VALUES (:education_level, :class, :term, :academic_year, :fee_item, :amount)");
+            $stmt = $conn->prepare("INSERT INTO fee_structure (education_level, class, term, academic_year, fee_item, amount) VALUES (?, ?, ?, ?, ?, ?)");
             
             for ($i = 0; $i < count($fee_items); $i++) {
                 $fee_item = sanitize($fee_items[$i]);
-                $amount = (float)$amounts[$i];
+                $amount = filter_var($amounts[$i], FILTER_VALIDATE_FLOAT);
                 
-                if (!empty($fee_item) && $amount > 0) {
-                    $stmt->bindValue(':education_level', $education_level, SQLITE3_TEXT);
-                    $stmt->bindValue(':class', $class, SQLITE3_TEXT);
-                    $stmt->bindValue(':term', $term, SQLITE3_INTEGER);
-                    $stmt->bindValue(':academic_year', $academic_year, SQLITE3_TEXT);
-                    $stmt->bindValue(':fee_item', $fee_item, SQLITE3_TEXT);
-                    $stmt->bindValue(':amount', $amount, SQLITE3_FLOAT);
-                    $stmt->execute();
+                if (!empty($fee_item) && $amount !== false && $amount > 0) {
+                    // Format amount to ensure proper decimal handling
+                    $amount = number_format($amount, 2, '.', '');
+                    $stmt->bind_param('ssisds', $education_level, $class, $term, $academic_year, $fee_item, $amount);
+                    if (!$stmt->execute()) {
+                        throw new Exception('Error saving fee item: ' . $stmt->error);
+                    }
                 }
             }
             
             // Commit transaction
-            $conn->exec('COMMIT');
+            $conn->commit();
             flashMessage('success', 'Fee structure added successfully');
             redirect('index.php');
             
         } catch (Exception $e) {
             // Rollback transaction on error
-            $conn->exec('ROLLBACK');
+            $conn->rollback();
             $error = 'Error adding fee structure: ' . $e->getMessage();
         }
     }
@@ -131,9 +151,11 @@ require_once '../../includes/navigation.php';
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Amount (KES)</label>
-                                <input type="number" name="amounts[]" required min="0" step="0.01"
+                                <input type="number" name="amounts[]" required min="0.01" step="0.01"
                                        class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                                       placeholder="0.00">
+                                       placeholder="0.00"
+                                       onchange="formatAmount(this)"
+                                       oninput="validateAmount(this)">
                             </div>
                         </div>
                     </div>
@@ -197,9 +219,11 @@ function addFeeItem() {
         </div>
         <div class="relative">
             <label class="block text-sm font-medium text-gray-700">Amount (KES)</label>
-            <input type="number" name="amounts[]" required min="0" step="0.01"
+            <input type="number" name="amounts[]" required min="0.01" step="0.01"
                    class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                   placeholder="0.00">
+                   placeholder="0.00"
+                   onchange="formatAmount(this)"
+                   oninput="validateAmount(this)">
             <button type="button" onclick="removeFeeItem(this)" 
                     class="absolute right-0 top-8 text-red-600 hover:text-red-900">
                 <i class="fas fa-times"></i>
@@ -213,22 +237,105 @@ function removeFeeItem(button) {
     button.closest('.grid').remove();
 }
 
+function formatAmount(input) {
+    if (input.value) {
+        // Ensure two decimal places and proper number formatting
+        const amount = parseFloat(input.value);
+        if (!isNaN(amount) && amount > 0) {
+            input.value = amount.toFixed(2);
+        }
+    }
+}
+
+function validateAmount(input) {
+    const amount = parseFloat(input.value);
+    if (isNaN(amount) || amount <= 0) {
+        input.setCustomValidity('Please enter a valid amount greater than 0');
+    } else {
+        input.setCustomValidity('');
+    }
+}
+
+// Clean up empty fee items before submission
+function cleanupEmptyItems() {
+    const container = document.getElementById('feeItems');
+    const items = container.getElementsByClassName('grid');
+    
+    for (let i = items.length - 1; i >= 0; i--) {
+        const feeItem = items[i].querySelector('input[name="fee_items[]"]');
+        const amount = items[i].querySelector('input[name="amounts[]"]');
+        
+        if (!feeItem.value && !amount.value) {
+            items[i].remove();
+        }
+    }
+}
+
 // Form validation
 document.getElementById('feeForm').addEventListener('submit', function(e) {
+    // Clean up empty items first
+    cleanupEmptyItems();
+    
+    const educationLevel = document.getElementById('education_level').value;
+    const classValue = document.getElementById('class').value;
+    const term = document.getElementById('term').value;
+    const academicYear = document.getElementById('academic_year').value;
     const feeItems = document.getElementsByName('fee_items[]');
     const amounts = document.getElementsByName('amounts[]');
-    let valid = true;
+    
+    if (!educationLevel) {
+        e.preventDefault();
+        alert('Please select an education level');
+        return;
+    }
+    
+    if (!classValue) {
+        e.preventDefault();
+        alert('Please select a class');
+        return;
+    }
+    
+    if (!term) {
+        e.preventDefault();
+        alert('Please select a term');
+        return;
+    }
+    
+    if (!academicYear) {
+        e.preventDefault();
+        alert('Please enter an academic year');
+        return;
+    }
+    
+    let hasValidItem = false;
+    let invalidAmounts = [];
     
     for (let i = 0; i < feeItems.length; i++) {
-        if (!feeItems[i].value || !amounts[i].value || amounts[i].value <= 0) {
-            valid = false;
-            break;
+        const feeItem = feeItems[i].value.trim();
+        const amountStr = amounts[i].value.trim();
+        const amount = parseFloat(amountStr);
+        
+        if (feeItem && amountStr) {
+            if (isNaN(amount) || amount <= 0) {
+                invalidAmounts.push(`${feeItem}: ${amountStr}`);
+            } else if (amount > 0) {
+                hasValidItem = true;
+            }
+        } else if (feeItem && !amountStr) {
+            invalidAmounts.push(`${feeItem}: empty amount`);
         }
     }
     
-    if (!valid) {
+    if (invalidAmounts.length > 0) {
         e.preventDefault();
-        alert('Please fill in all fee items and ensure amounts are greater than 0');
+        alert('Invalid amounts detected:\n' + invalidAmounts.join('\n') + '\n\nPlease ensure all amounts are numbers greater than 0');
+        return;
+    }
+    
+    if (!hasValidItem) {
+        e.preventDefault();
+        alert('Please add at least one fee item with an amount greater than 0');
+        return;
     }
 });
 </script>
