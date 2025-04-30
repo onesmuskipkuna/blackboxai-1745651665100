@@ -63,13 +63,74 @@ while ($row = $result->fetch_assoc()) {
         @media print {
             @page {
                 margin: 0;
-                size: A4;
+                /* Remove fixed size to allow any printer size */
+                /* size: A4; */
             }
             body {
                 margin: 1.6cm;
+                /* Use max-width to prevent overflow */
+                max-width: 100%;
             }
             .no-print {
                 display: none;
+            }
+            /* Ensure table and content adapt to page width */
+            table {
+                width: 100% !important;
+                border-collapse: collapse;
+            }
+            th, td {
+                page-break-inside: avoid;
+                word-wrap: break-word;
+            }
+            /* Avoid breaking rows across pages */
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+        /* Thermal printer 80mm width */
+        @media print and (max-width: 80mm) {
+            body {
+                margin: 0.5cm;
+                max-width: 80mm;
+                font-size: 10px;
+                font-family: monospace, monospace;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 12px;
+                margin-bottom: 0.2em;
+            }
+            table {
+                font-size: 10px !important;
+                width: 100% !important;
+                border-collapse: collapse;
+            }
+            th, td {
+                padding: 2px 4px;
+                white-space: normal;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                max-width: 70mm;
+            }
+            .text-center {
+                text-align: center !important;
+            }
+            .text-right {
+                text-align: right !important;
+            }
+            .mb-8 {
+                margin-bottom: 0.5em !important;
+            }
+            .p-8 {
+                padding: 0.5em !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            /* Hide footer on thermal print */
+            .text-center.text-sm.text-gray-600.mt-16 {
+                display: none !important;
             }
         }
     </style>
