@@ -18,10 +18,11 @@ if (!$category_id) {
 }
 
 // Fetch category data
-$stmt = $conn->prepare("SELECT * FROM expense_categories WHERE id = :id");
-$stmt->bindValue(':id', $category_id, SQLITE3_INTEGER);
-$result = $stmt->execute();
-$category = $result->fetchArray(SQLITE3_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM expense_categories WHERE id = ?");
+$stmt->bind_param("i", $category_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$category = $result->fetch_assoc();
 
 if (!$category) {
     header('Location: index.php');
@@ -38,19 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Category name is required';
     } else {
         // Check if category name exists for other categories
-        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM expense_categories WHERE name = :name AND id != :id");
-        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $stmt->bindValue(':id', $category_id, SQLITE3_INTEGER);
-        $result = $stmt->execute();
-        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM expense_categories WHERE name = ? AND id != ?");
+        $stmt->bind_param("si", $name, $category_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         if ($row['count'] > 0) {
             $error = 'Category name already exists';
         } else {
             // Update category
-            $stmt = $conn->prepare("UPDATE expense_categories SET name = :name, description = :description WHERE id = :id");
-            $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-            $stmt->bindValue(':description', $description, SQLITE3_TEXT);
-            $stmt->bindValue(':id', $category_id, SQLITE3_INTEGER);
+            $stmt = $conn->prepare("UPDATE expense_categories SET name = ?, description = ? WHERE id = ?");
+            $stmt->bind_param("ssi", $name, $description, $category_id);
             $stmt->execute();
 
             flashMessage('success', 'Expense category updated successfully');
