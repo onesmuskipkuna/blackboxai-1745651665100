@@ -1,4 +1,7 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 $page_title = 'Payments Management';
 require_once '../../includes/config.php';
 require_once '../../includes/functions.php';
@@ -63,43 +66,95 @@ if (isset($_POST['delete_payment'])) {
     redirect($_SERVER['PHP_SELF']);
 }
 
-// Get filter parameters
 $student = isset($_GET['student']) ? sanitize($_GET['student']) : '';
 $payment_mode = isset($_GET['payment_mode']) ? sanitize($_GET['payment_mode']) : '';
 $date_from = isset($_GET['date_from']) ? sanitize($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? sanitize($_GET['date_to']) : '';
 
-// Build query
-$query = "
-    SELECT p.*, 
-           i.invoice_number,
-           s.first_name, s.last_name, s.admission_number
-    FROM payments p
-    JOIN invoices i ON p.invoice_id = i.id
-    JOIN students s ON i.student_id = s.id
-    WHERE 1=1
-";
+$allowed_page_sizes = [10, 25, 50, 100, 500];
+$records_per_page = isset($_GET['records_per_page']) ? (int)$_GET['records_per_page'] : 10;
+if (!in_array($records_per_page, $allowed_page_sizes)) {
+    $records_per_page = 10;
+}
+
+// Prepare the base WHERE clause and parameters
+$where_conditions = [];
+$params = [];
+$types = "";
 
 if ($student) {
-    $query .= " AND (s.first_name LIKE '%$student%' OR s.last_name LIKE '%$student%' OR s.admission_number LIKE '%$student%')";
+    $where_conditions[] = "(s.first_name LIKE ? OR s.last_name LIKE ? OR s.admission_number LIKE ?)";
+    $student_param = "%$student%";
+    $params[] = $student_param;
+    $params[] = $student_param;
+    $params[] = $student_param;
+    $types .= "sss";
 }
 if ($payment_mode) {
-    $query .= " AND p.payment_mode = '$payment_mode'";
+    $where_conditions[] = "p.payment_mode = ?";
+    $params[] = $payment_mode;
+    $types .= "s";
 }
 if ($date_from) {
-    $query .= " AND DATE(p.created_at) >= '$date_from'";
+    $where_conditions[] = "DATE(p.created_at) >= ?";
+    $params[] = $date_from;
+    $types .= "s";
 }
 if ($date_to) {
-    $query .= " AND DATE(p.created_at) <= '$date_to'";
+    $where_conditions[] = "DATE(p.created_at) <= ?";
+    $params[] = $date_to;
+    $types .= "s";
 }
 
-$query .= " ORDER BY p.created_at DESC";
+// Build the WHERE clause
+$where_clause = count($where_conditions) > 0 ? " WHERE " . implode(" AND ", $where_conditions) : "";
 
-$result = $conn->query($query);
+// Get total records with prepared statement
+$count_query = "SELECT COUNT(*) as total FROM payments p 
+                JOIN invoices i ON p.invoice_id = i.id 
+                JOIN students s ON i.student_id = s.id" . $where_clause;
+
+$stmt = $conn->prepare($count_query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total_result = $stmt->get_result();
+$total_records = $total_result->fetch_assoc()['total'];
+$stmt->close();
+
+// Get current page
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+
+// Calculate pagination
+require_once '../../includes/pagination.php';
+$pagination = getPagination($total_records, $records_per_page, $page);
+
+// Build main query with pagination using prepared statement
+$query = "SELECT p.*, 
+                 i.invoice_number,
+                 s.first_name, s.last_name, s.admission_number, s.class
+          FROM payments p
+          JOIN invoices i ON p.invoice_id = i.id
+          JOIN students s ON i.student_id = s.id" . $where_clause . 
+          " ORDER BY p.created_at DESC LIMIT ? OFFSET ?";
+
+// Add pagination parameters
+$types .= "ii";
+$params[] = $pagination['limit'];
+$params[] = $pagination['offset'];
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$result = $stmt->get_result();
 $payments = [];
 while ($row = $result->fetch_assoc()) {
     $payments[] = $row;
 }
+$stmt->close();
 
 require_once '../../includes/header.php';
 require_once '../../includes/navigation.php';
@@ -147,6 +202,19 @@ require_once '../../includes/navigation.php';
                            class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
                 </div>
 
+                <div>
+                    <label for="records_per_page" class="block text-sm font-medium text-gray-700">Records per page</label>
+                    <select id="records_per_page" name="records_per_page" onchange="this.form.submit()"
+                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                        <?php
+                        foreach ($allowed_page_sizes as $size) {
+                            $selected = ($records_per_page == $size) ? 'selected' : '';
+                            echo "<option value=\"$size\" $selected>$size</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+
                 <div class="mt-6 sm:mt-0">
                     <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:w-auto">
                         <i class="fas fa-search mr-2"></i>Filter
@@ -164,6 +232,9 @@ require_once '../../includes/navigation.php';
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        S/N
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Receipt Number
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -179,6 +250,9 @@ require_once '../../includes/navigation.php';
                                         Payment Mode
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Class
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Reference
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -190,8 +264,14 @@ require_once '../../includes/navigation.php';
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <?php foreach ($payments as $payment): ?>
+                                <?php 
+                                $serial_number = $pagination['offset'] + 1;
+                                foreach ($payments as $payment): 
+                                ?>
                                 <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <?php echo $serial_number++; ?>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                         <?php echo htmlspecialchars($payment['payment_number']); ?>
                                     </td>
@@ -208,6 +288,9 @@ require_once '../../includes/navigation.php';
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         <?php echo ucfirst($payment['payment_mode']); ?>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <?php echo htmlspecialchars(ucfirst($payment['class'])); ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         <?php echo htmlspecialchars($payment['reference_number'] ?? '-'); ?>
@@ -234,6 +317,25 @@ require_once '../../includes/navigation.php';
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Record Count and Pagination -->
+        <div class="mt-4 flex flex-col sm:flex-row justify-between items-center bg-white px-4 py-3 sm:rounded-lg">
+            <div class="flex-1 text-sm text-gray-700">
+                <?php
+                $start_record = ($pagination['current_page'] - 1) * $records_per_page + 1;
+                $end_record = min($start_record + $records_per_page - 1, $total_records);
+                echo "Showing <span class=\"font-medium\">$start_record</span> to <span class=\"font-medium\">$end_record</span> of <span class=\"font-medium\">$total_records</span> records";
+                ?>
+            </div>
+            <div class="mt-4 sm:mt-0">
+                <?php
+                $params = $_GET;
+                unset($params['page']);
+                $base_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($params) . (empty($params) ? '?' : '&') . 'page=';
+                echo renderPagination($pagination, $base_url);
+                ?>
             </div>
         </div>
     </div>
