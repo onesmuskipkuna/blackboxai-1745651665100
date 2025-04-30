@@ -82,6 +82,26 @@ try {
         $fee_items[] = $row;
     }
 
+    // Get payment history for this invoice
+    $stmt = $conn->prepare("
+        SELECT 
+            payment_number,
+            amount,
+            payment_mode,
+            reference_number,
+            created_at
+        FROM payments 
+        WHERE invoice_id = ?
+        ORDER BY created_at ASC
+    ");
+    $stmt->bind_param('i', $payment['invoice_id']);
+    $stmt->execute();
+    $history_result = $stmt->get_result();
+    $payment_history = [];
+    while ($row = $history_result->fetch_assoc()) {
+        $payment_history[] = $row;
+    }
+
 } catch (Exception $e) {
     flashMessage('error', $e->getMessage());
     redirect('index.php');
@@ -90,172 +110,449 @@ try {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receipt #<?php echo htmlspecialchars($payment['payment_number']); ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
-    />
     <style>
+        /* Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Base styles */
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            margin: 0 auto;
+            padding: 10mm;
+        }
+
+        /* Base styles */
+        table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 5mm;
+            font-size: 10px;
+        }
+
+        td, th {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 1mm;
+            text-align: left;
+        }
+
+        th {
+            border-bottom: 1px solid #000;
+            font-weight: bold;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 5mm;
+        }
+
+        .header h1 {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 2mm;
+        }
+
+        /* Receipt title */
+        .receipt-title {
+            text-align: center;
+            margin-bottom: 5mm;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 2mm;
+        }
+
+        /* Details sections */
+        .details {
+            margin-bottom: 5mm;
+        }
+
+        .details-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1mm;
+        }
+
+        .details-label {
+            font-weight: bold;
+        }
+
+        /* Section headers */
+        .section-header {
+            font-weight: bold;
+            text-align: center;
+            margin: 5mm 0 2mm;
+            padding: 1mm 0;
+            border-bottom: 1px dashed #000;
+        }
+
+        .amount {
+            text-align: right;
+        }
+
+        .total-row {
+            border-top: 1px solid #000;
+            font-weight: bold;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 5mm;
+            padding-top: 2mm;
+            border-top: 1px dashed #000;
+        }
+
+        .signature {
+            margin-top: 10mm;
+            text-align: center;
+        }
+
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 50%;
+            margin: 10mm auto 2mm;
+        }
+
+        /* Print specific styles */
         @media print {
             @page {
-                margin: 0;
+                margin: 5mm;
                 size: auto;
             }
+
             body {
-                margin: 1.6cm;
+                width: 100%;
+                min-width: 0;
+                margin: 0;
+                padding: 5mm;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
+
+            table {
+                page-break-inside: avoid;
+                width: 100% !important;
+                font-size: 9px !important;
+            }
+
+            td, th {
+                font-size: 9px !important;
+                padding: 2mm 3mm !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+
+            .section-header {
+                page-break-before: auto;
+                page-break-after: avoid;
+                font-size: 11px !important;
+            }
+
+            .mb-5 {
+                margin-bottom: 4mm !important;
+            }
+
+            .mb-3 {
+                margin-bottom: 2mm !important;
+            }
+
+            .px-4 {
+                padding-left: 2mm !important;
+                padding-right: 2mm !important;
+            }
+
+            .py-3 {
+                padding-top: 1.5mm !important;
+                padding-bottom: 1.5mm !important;
+            }
+
             .no-print {
-                display: none;
+                display: none !important;
             }
-        }
-        /* Ensure table fits any printer width */
-        table {
-            width: 100% !important;
-            max-width: 100% !important;
-            border-collapse: collapse !important;
-        }
-        th, td {
-            word-wrap: break-word;
-            max-width: 1px;
-            white-space: nowrap;
+
+            /* Ensure tables don't overflow */
+            .table-container {
+                overflow-x: hidden !important;
+                width: 100% !important;
+                margin-bottom: 4mm !important;
+            }
+
+            /* Ensure text colors print properly */
+            .text-green-700 {
+                color: #047857 !important;
+            }
+
+            .text-red-700 {
+                color: #b91c1c !important;
+            }
+
+            /* Ensure backgrounds print properly */
+            .bg-gray-100 {
+                background-color: #f3f4f6 !important;
+            }
         }
     </style>
 </head>
-<body class="bg-white">
-    <div class="fixed top-4 right-4 print:hidden no-print">
-        <button
-          onclick="window.print()"
-          class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-        >
-          <i class="fas fa-print mr-2"></i>Print
-        </button>
-        <a
-          href="index.php"
-          class="ml-2 bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
-        >
-          <i class="fas fa-arrow-left mr-2"></i>Back
-        </a>
+<body>
+    <!-- Print/Back Buttons -->
+    <div class="no-print" style="position: fixed; top: 20px; right: 20px;">
+        <button onclick="window.print()" style="padding: 10px; margin-right: 10px; cursor: pointer;">Print</button>
+        <button onclick="window.location.href='index.php'" style="padding: 10px; cursor: pointer;">Back</button>
     </div>
 
-    <div class="max-w-4xl mx-auto p-8">
-        <!-- School Header -->
-        <div class="text-center mb-8">
-            <h1 class="text-2xl font-bold"><?php echo SITE_NAME; ?></h1>
-            <p class="text-gray-600">P.O. Box 123, City</p>
-            <p class="text-gray-600">Phone: +254 123 456 789</p>
-            <p class="text-gray-600">Email: info@school.com</p>
-        </div>
+    <!-- Header -->
+    <div class="header flex items-center justify-center space-x-4">
+        <img src="/path/to/logo.png" alt="Site Logo" class="h-12 w-auto" />
+        <h1 class="text-2xl font-bold"><?php echo SITE_NAME; ?></h1>
+    </div>
+    <div class="text-center text-sm text-gray-600 mb-4">
+        <div>P.O. Box 123, City</div>
+        <div>Phone: +254 123 456 789</div>
+        <div>Email: info@school.com</div>
+    </div>
 
-        <!-- Invoice Title -->
-        <div class="text-center mb-8">
-            <h2 class="text-xl font-bold">PAYMENT RECEIPT</h2>
-            <p class="text-gray-600">
-                Receipt #: <?php echo htmlspecialchars($payment['payment_number']); ?>
-            </p>
-            <p class="text-gray-600">
-                Date: <?php echo date('F j, Y', strtotime($payment['created_at'])); ?>
-            </p>
-        </div>
+    <!-- Receipt Title -->
+    <div class="receipt-title">
+        <h2>PAYMENT RECEIPT</h2>
+        <div>Receipt #: <?php echo htmlspecialchars($payment['payment_number']); ?></div>
+        <div>Date: <?php echo date('d/m/Y H:i', strtotime($payment['created_at'])); ?></div>
+    </div>
 
-        <!-- Student Details -->
-        <div class="mb-8 grid grid-cols-2 gap-4">
-            <div>
-                <h3 class="font-bold mb-2">Student Details:</h3>
-                <p>Name: <?php echo htmlspecialchars($payment['first_name'] . ' ' . $payment['last_name']); ?></p>
-                <p>Admission No: <?php echo htmlspecialchars($payment['admission_number']); ?></p>
-                <p>Class: <?php echo ucfirst($payment['class']); ?></p>
-                <p>Level: <?php echo ucfirst(str_replace('_', ' ', $payment['education_level'])); ?></p>
-            </div>
-            <div>
-                <h3 class="font-bold mb-2">Payment Details:</h3>
-                <p>Invoice #: <?php echo htmlspecialchars($payment['invoice_number']); ?></p>
-                <p>Term: <?php echo $payment['term']; ?></p>
-                <p>Academic Year: <?php echo $payment['academic_year']; ?></p>
-                <p>Payment Mode: <?php echo ucfirst($payment['payment_mode']); ?></p>
-                <?php if ($payment['reference_number']): ?>
-                <p>Reference #: <?php echo htmlspecialchars($payment['reference_number']); ?></p>
-                <?php endif; ?>
-            </div>
+    <!-- Student Details -->
+    <div class="details">
+        <div class="details-row">
+            <span class="details-label">Student:</span>
+            <span><?php echo htmlspecialchars($payment['first_name'] . ' ' . $payment['last_name']); ?></span>
         </div>
+        <div class="details-row">
+            <span class="details-label">Adm No:</span>
+            <span><?php echo htmlspecialchars($payment['admission_number']); ?></span>
+        </div>
+        
+        <div class="details-row">
+            <span class="details-label">Class:</span>
+            <span><?php echo ucfirst($payment['class']); ?></span>
+        </div>
+    </div>
 
-        <table class="min-w-full mb-8">
+    <!-- Payment Details -->
+    <div class="details">
+        <div class="details-row">
+            <span class="details-label">Invoice #:</span>
+            <span><?php echo htmlspecialchars($payment['invoice_number']); ?></span>
+        </div>
+        <div class="details-row">
+            <span class="details-label">Term:</span>
+            <span><?php echo $payment['term']; ?></span>
+        </div>
+        <div class="details-row">
+            <span class="details-label">Mode:</span>
+            <span><?php echo ucfirst($payment['payment_mode']); ?></span>
+        </div>
+        <?php if ($payment['reference_number']): ?>
+        <div class="details-row">
+            <span class="details-label">Ref #:</span>
+            <span><?php echo htmlspecialchars($payment['reference_number']); ?></span>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Fee Breakdown Section -->
+    <div class="section-header mb-3">FEE BREAKDOWN</div>
+    
+    <!-- Fee Items Table -->
+    <div class="mb-5 table-container">
+        <div class="text-sm font-bold mb-2 px-1">Fee Items & Total Amount</div>
+        <table class="table-auto border-collapse border border-gray-400 w-full text-sm font-semibold" style="min-width: 400px;">
             <thead>
-                <tr class="border-b-2 border-gray-300">
-                    <th class="text-left py-2">Fee Item</th>
-                    <th class="text-right py-2">Total Amount</th>
-                    <th class="text-right py-2">Previous Paid</th>
-                    <th class="text-right py-2">Current Payment</th>
-                    <th class="text-right py-2">Balance</th>
+                <tr class="bg-gray-100 font-bold">
+                    <th class="border border-gray-300 px-4 py-3 text-left">Fee Item</th>
+                    <th class="border border-gray-300 px-4 py-3 text-right">Total Amount</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($fee_items as $item): ?>
-                <tr class="border-b border-gray-200">
-                    <td class="py-2"><?php echo htmlspecialchars($item['fee_item']); ?></td>
-                    <td class="text-right py-2"><?php echo number_format($item['original_amount'], 2); ?></td>
-                    <td class="text-right py-2"><?php echo number_format($item['total_paid'] - $item['current_payment'], 2); ?></td>
-                    <td class="text-right py-2 text-green-600"><?php echo number_format($item['current_payment'], 2); ?></td>
-                    <td class="text-right py-2 text-red-600"><?php echo number_format($item['balance'], 2); ?></td>
+            <?php 
+            $total_amount = 0;
+            foreach ($fee_items as $item): 
+                $total_amount += $item['original_amount'];
+            ?>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3"><?php echo htmlspecialchars($item['fee_item']); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($item['original_amount'], 2); ?></td>
                 </tr>
-                <?php endforeach; ?>
+            <?php endforeach; ?>
             </tbody>
-            <tfoot class="border-t-2 border-gray-300">
-                <tr class="font-bold">
-                    <td colspan="3" class="py-2">Total Current Payment:</td>
-                    <td class="text-right py-2 text-green-600">KES <?php echo number_format($payment['amount'], 2); ?></td>
-                    <td></td>
-                </tr>
+            <tfoot class="font-bold bg-gray-100">
                 <tr>
-                    <td colspan="4" class="py-2">Total Invoice Amount:</td>
-                    <td class="text-right py-2">KES <?php echo number_format($payment['invoice_total'], 2); ?></td>
-                </tr>
-                <tr>
-                    <td colspan="4" class="py-2">Total Amount Paid:</td>
-                    <td class="text-right py-2 text-green-600">KES <?php echo number_format($payment['invoice_paid'], 2); ?></td>
-                </tr>
-                <tr>
-                    <td colspan="4" class="py-2">Outstanding Balance:</td>
-                    <td class="text-right py-2 text-red-600">KES <?php echo number_format($payment['invoice_balance'], 2); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right">Total:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($total_amount, 2); ?></td>
                 </tr>
             </tfoot>
         </table>
-
-        <?php if ($payment['remarks']): ?>
-        <div class="mb-8">
-            <h3 class="font-bold mb-2">Remarks:</h3>
-            <p class="text-gray-600"><?php echo nl2br(htmlspecialchars($payment['remarks'])); ?></p>
-        </div>
-        <?php endif; ?>
-
-        <div class="mt-16 grid grid-cols-2 gap-8">
-            <div>
-                <div class="border-t-2 border-gray-300 pt-2">
-                    <p class="text-center text-sm text-gray-600">Received By</p>
-                </div>
-            </div>
-            <div>
-                <div class="border-t-2 border-gray-300 pt-2">
-                    <p class="text-center text-sm text-gray-600">Official Stamp</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="text-center text-sm text-gray-600 mt-8">
-            <p>This is an official receipt</p>
-            <p>Printed on: <?php echo date('F j, Y H:i:s'); ?></p>
-        </div>
     </div>
 
+    <!-- Payment Details Table -->
+    <div class="mb-5 table-container">
+        <div class="text-sm font-bold mb-2 px-1">Payment Details</div>
+        <table class="table-auto border-collapse border border-gray-400 w-full text-sm font-semibold" style="min-width: 500px;">
+            <thead>
+                <tr class="bg-gray-100 font-bold">
+                    <th class="border border-gray-300 px-4 py-3 text-left">Fee Item</th>
+                    <th class="border border-gray-300 px-4 py-3 text-right">Previously Paid</th>
+                    <th class="border border-gray-300 px-4 py-3 text-right">Current Payment</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php 
+            $total_prev_paid = 0;
+            $total_current = 0;
+            foreach ($fee_items as $item): 
+                $prev_paid = $item['total_paid'] - $item['current_payment'];
+                $total_prev_paid += $prev_paid;
+                $total_current += $item['current_payment'];
+            ?>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3"><?php echo htmlspecialchars($item['fee_item']); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($prev_paid, 2); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-green-700"><?php echo number_format($item['current_payment'], 2); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <tfoot class="font-bold bg-gray-100">
+                <tr>
+                    <td class="border border-gray-300 px-4 py-3 text-right">Total:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($total_prev_paid, 2); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-green-700"><?php echo number_format($total_current, 2); ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- Balance Table -->
+    <div class="mb-5 table-container">
+        <div class="text-sm font-bold mb-2 px-1">Balance Details</div>
+        <table class="table-auto border-collapse border border-gray-400 w-full text-sm font-semibold" style="min-width: 400px;">
+            <thead>
+                <tr class="bg-gray-100 font-bold">
+                    <th class="border border-gray-300 px-4 py-3 text-left">Fee Item</th>
+                    <th class="border border-gray-300 px-4 py-3 text-right">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php 
+            $total_balance = 0;
+            foreach ($fee_items as $item): 
+                $total_balance += $item['balance'];
+            ?>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3"><?php echo htmlspecialchars($item['fee_item']); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-red-700"><?php echo number_format($item['balance'], 2); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <tfoot class="font-bold bg-gray-100">
+                <tr>
+                    <td class="border border-gray-300 px-4 py-3 text-right">Total Balance:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-red-700"><?php echo number_format($total_balance, 2); ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- Payment History -->
+    <div class="section-header mb-3">PAYMENT HISTORY</div>
+    <div class="mb-5 table-container">
+        <table class="table-auto border-collapse border border-gray-400 w-full text-sm font-semibold" style="min-width: 400px;">
+            <thead>
+                <tr class="bg-gray-100 font-bold">
+                    <th class="border border-gray-300 px-4 py-3 text-left">Date</th>
+                    <th class="border border-gray-300 px-4 py-3 text-left">Receipt #</th>
+                    <th class="border border-gray-300 px-4 py-3 text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php 
+            $total_paid = 0;
+            foreach ($payment_history as $hist): 
+                $total_paid += $hist['amount'];
+            ?>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3"><?php echo date('d/m/y', strtotime($hist['created_at'])); ?></td>
+                    <td class="border border-gray-300 px-4 py-3"><?php echo htmlspecialchars($hist['payment_number']); ?></td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($hist['amount'], 2); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <tfoot class="font-bold bg-gray-100">
+                <tr>
+                    <td class="border border-gray-300 px-4 py-3 text-right" colspan="2">Total Paid:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($total_paid, 2); ?></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- Balance Summary -->
+    <div class="section-header mb-3">BALANCE SUMMARY</div>
+    <div class="mb-5 table-container">
+        <table class="table-auto border-collapse border border-gray-400 w-full text-sm font-semibold" style="min-width: 300px;">
+            <tbody>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3">Invoice Total:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right"><?php echo number_format($payment['invoice_total'], 2); ?></td>
+                </tr>
+                <tr class="border-b border-gray-300">
+                    <td class="border border-gray-300 px-4 py-3">Total Paid:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-green-700"><?php echo number_format($payment['invoice_paid'], 2); ?></td>
+                </tr>
+                <tr class="bg-gray-100 font-bold">
+                    <td class="border border-gray-300 px-4 py-3">Balance:</td>
+                    <td class="border border-gray-300 px-4 py-3 text-right text-red-700"><?php echo number_format($payment['invoice_balance'], 2); ?></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <?php if ($payment['remarks']): ?>
+    <div class="details">
+        <div class="details-label">Remarks:</div>
+        <div><?php echo nl2br(htmlspecialchars($payment['remarks'])); ?></div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Signature -->
+    <div class="signature">
+        <div class="signature-line"></div>
+        <div>Authorized Signature</div>
+    </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div>Thank you for your payment</div>
+            <div>This is a computer generated receipt</div>
+            <div>Printed on: <?php echo date('d/m/Y H:i:s'); ?></div>
+            <div>Served By: <?php echo htmlspecialchars($_SESSION['user_name'] ?? ''); ?></div>
+        </div>
+
     <script>
-    // Auto-print when the page loads
-    window.onload = function() {
-        if (!window.location.search.includes('noprint')) {
-            window.print();
-        }
-    };
+        // Auto-print when the page loads
+        window.onload = function() {
+            if (!window.location.search.includes('noprint')) {
+                window.print();
+            }
+        };
     </script>
 </body>
 </html>
