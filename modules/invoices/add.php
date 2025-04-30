@@ -215,11 +215,15 @@ require_once '../../includes/navigation.php';
                 <!-- Fee Items Section -->
                 <div class="mt-6">
                     <h3 class="text-lg font-medium text-gray-900">Fee Items</h3>
-                    <div id="feeItemsContainer" class="mt-4 space-y-4">
-                        <!-- Fee items will be loaded here dynamically -->
+                    <div class="mt-4">
+                        <div class="grid grid-cols-3 gap-4">
+                            <div id="feeColumn1" class="space-y-2"></div>
+                            <div id="feeColumn2" class="space-y-2"></div>
+                            <div id="feeColumn3" class="space-y-2"></div>
+                        </div>
                     </div>
 
-                    <div class="mt-4 flex justify-between items-center">
+                    <div class="mt-6 flex justify-between items-center">
                         <div class="text-lg font-bold text-gray-900">
                             Total Amount: KES <span id="totalAmount">0.00</span>
                         </div>
@@ -325,36 +329,47 @@ function loadFeeStructure() {
     fetch(`get_fee_structure.php?class=${studentClass}&education_level=${educationLevel}&term=${term}&academic_year=${academicYear}`)
         .then(response => response.json())
         .then(data => {
-            const container = document.getElementById('feeItemsContainer');
-            container.innerHTML = '';
-            
-            data.forEach(item => {
+            // Clear all columns
+            document.getElementById('feeColumn1').innerHTML = '';
+            document.getElementById('feeColumn2').innerHTML = '';
+            document.getElementById('feeColumn3').innerHTML = '';
+
+            // Calculate items per column
+            const itemsPerColumn = Math.ceil(data.length / 3);
+
+            // Distribute items across columns
+            data.forEach((item, index) => {
+                const columnIndex = Math.floor(index / itemsPerColumn) + 1;
+                const column = document.getElementById(`feeColumn${columnIndex}`);
+
                 const div = document.createElement('div');
-                div.className = 'grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-4 border-b pb-4';
+                div.className = 'bg-white p-2 rounded border border-gray-200 hover:shadow-sm';
                 div.innerHTML = `
-                    <div class="sm:col-span-1 flex items-center">
-                        <input type="checkbox" name="fee_items[${item.id}][selected]" value="1" 
-                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded fee-item-checkbox"
-                               onchange="toggleFeeItem(this)">
-                        <label class="ml-2 block text-sm font-medium text-gray-700">${item.fee_item}</label>
-                        <input type="hidden" name="fee_items[${item.id}][fee_id]" value="${item.id}">
-                    </div>
-                    <div class="sm:col-span-1">
-                        <label class="block text-sm font-medium text-gray-700">Amount (KES)</label>
-                        <input type="number" name="fee_items[${item.id}][amount]" value="${item.amount}" 
-                               data-default-amount="${item.amount}"
-                               class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md fee-amount"
-                               onchange="calculateTotal()" disabled>
+                    <div class="flex items-start space-x-2">
+                        <div class="flex-shrink-0 pt-1">
+                            <input type="checkbox" name="fee_items[${item.id}][selected]" value="1" 
+                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded fee-item-checkbox"
+                                   onchange="toggleFeeItem(this)">
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <label class="block text-sm font-medium text-gray-700 truncate mb-1">${item.fee_item}</label>
+                            <input type="hidden" name="fee_items[${item.id}][fee_id]" value="${item.id}">
+                            <input type="number" name="fee_items[${item.id}][amount]" value="${item.amount}" 
+                                   data-default-amount="${item.amount}"
+                                   class="block w-full text-sm border-gray-300 rounded-md fee-amount h-8"
+                                   min="0" step="0.01"
+                                   onchange="validateAndCalculateTotal(this)" disabled>
+                        </div>
                     </div>
                 `;
-                container.appendChild(div);
+                column.appendChild(div);
             });
         })
         .catch(error => console.error('Error:', error));
 }
 
 function toggleFeeItem(checkbox) {
-    const container = checkbox.closest('.grid');
+    const container = checkbox.closest('.flex');
     const amountInput = container.querySelector('.fee-amount');
     const defaultAmount = amountInput.getAttribute('data-default-amount');
     
@@ -362,49 +377,52 @@ function toggleFeeItem(checkbox) {
     
     if (!checkbox.checked) {
         amountInput.value = '';
+        container.classList.remove('bg-blue-50', 'border-blue-200');
     } else {
-        // Reset to default amount from fee structure
+        // Reset to default amount from fee structure but allow it to be changed
         amountInput.value = defaultAmount || '0.00';
+        container.classList.add('bg-blue-50', 'border-blue-200');
     }
     
-    calculateTotal();
-    
-    // Debug log
-    console.log('Toggle fee item:', {
-        checked: checkbox.checked,
-        defaultAmount: defaultAmount,
-        currentValue: amountInput.value,
-        feeId: container.querySelector('input[name*="[fee_id]"]').value
-    });
+    validateAndCalculateTotal(amountInput);
 }
 
-function calculateTotal() {
+function validateAndCalculateTotal(input) {
+    input.classList.remove('border-red-500');
+    
     const checkboxes = document.getElementsByClassName('fee-item-checkbox');
     let total = 0;
-    let selectedItems = [];
+    let hasError = false;
     
     for (let checkbox of checkboxes) {
         if (checkbox.checked) {
-            const container = checkbox.closest('.grid');
+            const container = checkbox.closest('.flex');
             const amountInput = container.querySelector('.fee-amount');
-            const amount = parseFloat(amountInput.value) || 0;
-            const feeId = container.querySelector('input[name*="[fee_id]"]').value;
             
-            total += amount;
-            selectedItems.push({
-                feeId: feeId,
-                amount: amount
-            });
+            // Only validate if amount is entered
+            if (amountInput.value) {
+                const amount = parseFloat(amountInput.value);
+                if (amount < 0) {
+                    amountInput.classList.add('border-red-500');
+                    hasError = true;
+                    continue;
+                }
+                total += amount;
+            }
+            amountInput.classList.remove('border-red-500');
         }
     }
     
     document.getElementById('totalAmount').textContent = total.toFixed(2);
     
-    // Debug log
-    console.log('Calculate total:', {
-        selectedItems: selectedItems,
-        total: total
-    });
+    // Disable submit button only if there are negative amounts
+    const submitButton = document.querySelector('button[type="submit"]');
+    submitButton.disabled = hasError;
+    if (hasError) {
+        submitButton.classList.add('opacity-50', 'cursor-not-allowed');
+    } else {
+        submitButton.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
 }
 
 // Form validation
@@ -419,22 +437,15 @@ document.getElementById('invoiceForm').addEventListener('submit', function(e) {
     
     let total = 0;
     let hasInvalidAmount = false;
-    let selectedData = [];
     
     selectedItems.forEach(checkbox => {
-        const container = checkbox.closest('.grid');
+        const container = checkbox.closest('.flex');
         const amountInput = container.querySelector('.fee-amount');
         const amount = parseFloat(amountInput.value);
-        const feeId = container.querySelector('input[name*="[fee_id]"]').value;
         
         if (!amount || amount <= 0) {
             hasInvalidAmount = true;
         }
-        
-        selectedData.push({
-            feeId: feeId,
-            amount: amount
-        });
         
         total += amount || 0;
     });
@@ -448,9 +459,6 @@ document.getElementById('invoiceForm').addEventListener('submit', function(e) {
         alert('Total amount must be greater than 0');
         return;
     }
-
-    console.log('Selected items:', selectedData);
-    console.log('Total amount:', total);
     
     // If all validation passes, submit the form
     this.submit();
