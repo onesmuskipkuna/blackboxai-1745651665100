@@ -3,6 +3,7 @@ $page_title = 'Students Management';
 require_once '../../includes/config.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/db.php';
+require_once '../../includes/pagination.php';
 
 // Require login
 requireLogin();
@@ -13,8 +14,8 @@ $conn = $db->getConnection();
 // Handle student deletion
 if (isset($_POST['delete_student'])) {
     $student_id = (int)$_POST['student_id'];
-    $stmt = $conn->prepare("DELETE FROM students WHERE id = :id");
-    $stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
+    $stmt = $conn->prepare("DELETE FROM students WHERE id = ?");
+    $stmt->bind_param('i', $student_id);
     
     if ($stmt->execute()) {
         flashMessage('success', 'Student deleted successfully.');
@@ -29,9 +30,8 @@ if (isset($_POST['promote_student'])) {
     $student_id = (int)$_POST['student_id'];
     $new_class = $_POST['new_class'];
     
-    $stmt = $conn->prepare("UPDATE students SET class = :class WHERE id = :id");
-    $stmt->bindValue(':class', $new_class, SQLITE3_TEXT);
-    $stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
+    $stmt = $conn->prepare("UPDATE students SET class = ? WHERE id = ?");
+    $stmt->bind_param('si', $new_class, $student_id);
     
     if ($stmt->execute()) {
         flashMessage('success', 'Student promoted successfully.');
@@ -45,24 +45,71 @@ if (isset($_POST['promote_student'])) {
 $education_level = isset($_GET['education_level']) ? $_GET['education_level'] : '';
 $class = isset($_GET['class']) ? $_GET['class'] : '';
 $search = isset($_GET['search']) ? $_GET['search'] : '';
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$records_per_page = isset($_GET['records_per_page']) ? (int)$_GET['records_per_page'] : 10;
+$allowed_page_sizes = [10, 25, 50, 100, 500];
+if (!in_array($records_per_page, $allowed_page_sizes)) {
+    $records_per_page = 10;
+}
 
-// Build query
-$query = "SELECT * FROM students WHERE 1=1";
+// Prepare the base WHERE clause and parameters
+$where_conditions = [];
+$params = [];
+$types = "";
+
 if ($education_level) {
-    $query .= " AND education_level = '" . $db->escape($education_level) . "'";
+    $where_conditions[] = "education_level = ?";
+    $params[] = $education_level;
+    $types .= "s";
 }
 if ($class) {
-    $query .= " AND class = '" . $db->escape($class) . "'";
+    $where_conditions[] = "class = ?";
+    $params[] = $class;
+    $types .= "s";
 }
 if ($search) {
-    $search = $db->escape($search);
-    $query .= " AND (first_name LIKE '%$search%' OR last_name LIKE '%$search%' OR admission_number LIKE '%$search%')";
+    $where_conditions[] = "(first_name LIKE ? OR last_name LIKE ? OR admission_number LIKE ? OR phone_number LIKE ?)";
+    $search_param = "%$search%";
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $types .= "ssss";
 }
-$query .= " ORDER BY admission_number ASC";
 
-$result = $conn->query($query);
+// Build the WHERE clause
+$where_clause = count($where_conditions) > 0 ? " WHERE " . implode(" AND ", $where_conditions) : "";
+
+// Get total records with prepared statement
+$count_query = "SELECT COUNT(*) as total FROM students" . $where_clause;
+$stmt = $conn->prepare($count_query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total_result = $stmt->get_result();
+$total_records = $total_result->fetch_assoc()['total'];
+$stmt->close();
+
+// Get pagination data
+$pagination = getPagination($total_records, $records_per_page, $page);
+
+// Main query with pagination using prepared statement
+$query = "SELECT * FROM students" . $where_clause . " ORDER BY admission_number ASC LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($query);
+
+// Add pagination parameters
+$types .= "ii";
+$params[] = $pagination['limit'];
+$params[] = $pagination['offset'];
+
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$result = $stmt->get_result();
 $students = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $students[] = $row;
 }
 
@@ -132,7 +179,7 @@ require_once '../../includes/navigation.php';
                     <label for="search" class="block text-sm font-medium text-gray-700">Search</label>
                     <input type="text" name="search" id="search" value="<?php echo htmlspecialchars($search); ?>" 
                            class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                           placeholder="Name or Admission Number">
+                           placeholder="Name, Admission Number or Phone">
                 </div>
 
                 <div class="mt-6 sm:mt-0">
@@ -143,8 +190,41 @@ require_once '../../includes/navigation.php';
             </form>
         </div>
 
+        <!-- Record Count -->
+        <div class="mt-6 bg-white shadow px-4 py-3 sm:rounded-lg">
+            <p class="text-sm text-gray-700">
+                <?php
+                $start_record = ($pagination['current_page'] - 1) * $records_per_page + 1;
+                $end_record = min($start_record + $records_per_page - 1, $total_records);
+                echo "Showing <span class=\"font-medium\">$start_record</span> to <span class=\"font-medium\">$end_record</span> of <span class=\"font-medium\">$total_records</span> records";
+                ?>
+            </p>
+            <div class="mt-2">
+                <form method="GET" id="pageSizeForm" class="inline-block">
+                    <?php
+                    // Preserve other GET parameters except records_per_page and page
+                    $query_params = $_GET;
+                    unset($query_params['records_per_page']);
+                    unset($query_params['page']);
+                    foreach ($query_params as $key => $value) {
+                        echo '<input type="hidden" name="' . htmlspecialchars($key) . '" value="' . htmlspecialchars($value) . '">';
+                    }
+                    ?>
+                    <label for="records_per_page" class="mr-2 text-sm font-medium text-gray-700">Records per page:</label>
+                    <select name="records_per_page" id="records_per_page" onchange="document.getElementById('pageSizeForm').submit()" class="border border-gray-300 rounded-md py-1 px-2 text-sm">
+                        <?php
+                        foreach ($allowed_page_sizes as $size) {
+                            $selected = ($records_per_page == $size) ? 'selected' : '';
+                            echo "<option value=\"$size\" $selected>$size</option>";
+                        }
+                        ?>
+                    </select>
+                </form>
+            </div>
+        </div>
+
         <!-- Students Table -->
-        <div class="mt-6 flex flex-col">
+        <div class="mt-4 flex flex-col">
             <div class="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div class="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
                     <div class="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
@@ -152,16 +232,19 @@ require_once '../../includes/navigation.php';
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        S/N
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Admission No.
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Student Name
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Guardian
+                                        Phone
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Phone
+                                        Education Level
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Class
@@ -175,8 +258,14 @@ require_once '../../includes/navigation.php';
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <?php foreach ($students as $student): ?>
+                                <?php 
+                                $serial_number = $pagination['offset'] + 1;
+                                foreach ($students as $student): 
+                                ?>
                                 <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <?php echo $serial_number++; ?>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                         <?php echo htmlspecialchars($student['admission_number']); ?>
                                     </td>
@@ -184,10 +273,10 @@ require_once '../../includes/navigation.php';
                                         <?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <?php echo htmlspecialchars($student['guardian_name']); ?>
+                                        <?php echo htmlspecialchars($student['phone_number']); ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        <?php echo htmlspecialchars($student['phone_number']); ?>
+                                        <?php echo htmlspecialchars($student['education_level']); ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <?php echo htmlspecialchars(ucfirst($student['class'])); ?>
@@ -219,6 +308,16 @@ require_once '../../includes/navigation.php';
                 </div>
             </div>
         </div>
+
+        <!-- Pagination -->
+        <?php
+        // Build the base URL for pagination
+        $params = $_GET;
+        unset($params['page']); // Remove existing page from parameters
+        $base_url = '?' . http_build_query($params) . (empty($params) ? 'page=' : '&page=');
+        
+        echo renderPagination($pagination, $base_url);
+        ?>
     </div>
 </div>
 
