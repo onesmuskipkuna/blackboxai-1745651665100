@@ -3,6 +3,7 @@ $page_title = 'Fee Structure Management';
 require_once '../../includes/config.php';
 require_once '../../includes/functions.php';
 require_once '../../includes/db.php';
+require_once '../../includes/pagination.php';
 
 // Require login
 requireLogin();
@@ -30,32 +31,78 @@ $class = isset($_GET['class']) ? $_GET['class'] : '';
 $term = isset($_GET['term']) ? (int)$_GET['term'] : '';
 $academic_year = isset($_GET['academic_year']) ? $_GET['academic_year'] : date('Y');
 
-// Build query
-$query = "SELECT * FROM fee_structure WHERE 1=1";
+// Prepare the base WHERE clause and parameters
+$where_conditions = [];
+$params = [];
+$types = "";
+
 if ($education_level) {
-    $query .= " AND education_level = '" . $db->escape($education_level) . "'";
+    $where_conditions[] = "education_level = ?";
+    $params[] = $education_level;
+    $types .= "s";
 }
 if ($class) {
-    $query .= " AND class = '" . $db->escape($class) . "'";
+    $where_conditions[] = "class = ?";
+    $params[] = $class;
+    $types .= "s";
 }
 if ($term) {
-    $query .= " AND term = " . $term;
+    $where_conditions[] = "term = ?";
+    $params[] = $term;
+    $types .= "i";
 }
 if ($academic_year) {
-    $query .= " AND academic_year = '" . $db->escape($academic_year) . "'";
+    $where_conditions[] = "academic_year = ?";
+    $params[] = $academic_year;
+    $types .= "s";
 }
-$query .= " ORDER BY education_level, class, term, fee_item";
 
-$result = $conn->query($query);
+// Build the WHERE clause
+$where_clause = count($where_conditions) > 0 ? " WHERE " . implode(" AND ", $where_conditions) : "";
+
+// Get total records with prepared statement
+$count_query = "SELECT COUNT(*) as total FROM fee_structure" . $where_clause;
+$stmt = $conn->prepare($count_query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$total_result = $stmt->get_result();
+$total_records = $total_result->fetch_assoc()['total'];
+$stmt->close();
+
+// Get current page
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$records_per_page = 10;
+
+// Calculate pagination
+$pagination = getPagination($total_records, $records_per_page, $page);
+
+// Main query with pagination using prepared statement
+$query = "SELECT * FROM fee_structure" . $where_clause . 
+         " ORDER BY education_level, class, term, fee_item LIMIT ? OFFSET ?";
+
+// Add pagination parameters
+$types .= "ii";
+$params[] = $pagination['limit'];
+$params[] = $pagination['offset'];
+
+$stmt = $conn->prepare($query);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$result = $stmt->get_result();
 $fee_structures = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $fee_structures[] = $row;
 }
+$stmt->close();
 
 // Get unique academic years for filter
 $years_result = $conn->query("SELECT DISTINCT academic_year FROM fee_structure ORDER BY academic_year DESC");
 $academic_years = [];
-while ($row = $years_result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $years_result->fetch_assoc()) {
     $academic_years[] = $row;
 }
 
@@ -134,6 +181,9 @@ require_once '../../includes/navigation.php';
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        #
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Education Level
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -157,8 +207,14 @@ require_once '../../includes/navigation.php';
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <?php foreach ($fee_structures as $fee): ?>
+                                <?php 
+                                $counter = $pagination['offset'] + 1;
+                                foreach ($fee_structures as $fee): 
+                                ?>
                                 <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <?php echo $counter++; ?>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         <?php echo ucfirst(str_replace('_', ' ', $fee['education_level'])); ?>
                                     </td>
@@ -195,6 +251,15 @@ require_once '../../includes/navigation.php';
                 </div>
             </div>
         </div>
+
+        <!-- Pagination -->
+        <?php
+        // Build the base URL for pagination
+        $params = $_GET;
+        unset($params['page']); // Remove page from params
+        $base_url = $_SERVER['PHP_SELF'] . '?' . http_build_query($params) . (empty($params) ? '?' : '&') . 'page=';
+        echo renderPagination($pagination, $base_url);
+        ?>
     </div>
 </div>
 
