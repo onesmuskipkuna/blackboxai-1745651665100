@@ -20,30 +20,44 @@ if (!$invoice_id) {
 }
 
 // Get invoice items with their balances
-// Fix: Use LEFT JOIN on payment_items with correct alias and group by all non-aggregated columns
 $stmt = $conn->prepare("
+    WITH payment_totals AS (
+        SELECT 
+            invoice_item_id,
+            COALESCE(SUM(amount), 0) as total_paid
+        FROM payment_items
+        GROUP BY invoice_item_id
+    )
     SELECT 
         ii.id,
         fs.fee_item,
         ii.amount as original_amount,
-        COALESCE(SUM(pi.amount), 0) as paid_amount,
-        (ii.amount - COALESCE(SUM(pi.amount), 0)) as balance
+        COALESCE(pt.total_paid, 0) as paid_amount,
+        (ii.amount - COALESCE(pt.total_paid, 0)) as balance
     FROM invoice_items ii
-    JOIN fee_structure fs ON ii.fee_structure_id = fs.id
-    LEFT JOIN payment_items pi ON pi.invoice_item_id = ii.id
+    LEFT JOIN fee_structure fs ON ii.fee_structure_id = fs.id
+    LEFT JOIN payment_totals pt ON pt.invoice_item_id = ii.id
     WHERE ii.invoice_id = ?
-    GROUP BY ii.id, fs.fee_item, ii.amount
     HAVING balance > 0
     ORDER BY fs.fee_item
 ");
 
 $stmt->bind_param('i', $invoice_id);
 $stmt->execute();
-
 $result = $stmt->get_result();
 
 $fee_items = [];
 while ($row = $result->fetch_assoc()) {
+    // Handle NULL fee_item (for balance carried forward)
+    if ($row['fee_item'] === null) {
+        $row['fee_item'] = 'Balance Carried Forward';
+    }
+    
+    // Ensure numeric values
+    $row['original_amount'] = (float)$row['original_amount'];
+    $row['paid_amount'] = (float)$row['paid_amount'];
+    $row['balance'] = (float)$row['balance'];
+    
     $fee_items[] = $row;
 }
 
