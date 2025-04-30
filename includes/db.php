@@ -91,9 +91,11 @@ class Database {
                 term INT NOT NULL,
                 academic_year VARCHAR(255) NOT NULL,
                 due_date DATE NOT NULL,
+                created_by INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (student_id) REFERENCES students(id)
+                FOREIGN KEY (student_id) REFERENCES students(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
             )",
             "CREATE TABLE IF NOT EXISTS invoice_items (
                 id INT PRIMARY KEY AUTO_INCREMENT,
@@ -112,8 +114,10 @@ class Database {
                 payment_mode ENUM('cash', 'mpesa', 'bank') NOT NULL,
                 reference_number VARCHAR(255),
                 remarks TEXT,
+                created_by INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
             )",
             "CREATE TABLE IF NOT EXISTS payment_items (
                 id INT PRIMARY KEY AUTO_INCREMENT,
@@ -136,8 +140,10 @@ class Database {
                 amount DECIMAL(10,2) NOT NULL,
                 description TEXT,
                 date DATE NOT NULL,
+                created_by INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (category_id) REFERENCES expense_categories(id)
+                FOREIGN KEY (category_id) REFERENCES expense_categories(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
             )",
             "CREATE TABLE IF NOT EXISTS payroll (
                 id INT PRIMARY KEY AUTO_INCREMENT,
