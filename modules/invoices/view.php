@@ -80,65 +80,65 @@ require_once '../../includes/header.php';
 require_once '../../includes/navigation.php';
 ?>
 
-<div class="py-6">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center">
-            <h1 class="text-2xl font-semibold text-gray-900">Invoice Details</h1>
+<div class="py-4">
+    <div class="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl font-semibold text-gray-900">Invoice Details</h1>
             <div class="flex space-x-2">
-                <a href="print.php?id=<?php echo $invoice_id; ?>" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                    <i class="fas fa-print mr-2"></i>Print Invoice
+                <a href="print.php?id=<?php echo $invoice_id; ?>" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    <i class="fas fa-print mr-1"></i>Print Invoice
                 </a>
-                <a href="index.php" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    <i class="fas fa-arrow-left mr-2"></i>Back to List
+                <a href="index.php" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <i class="fas fa-arrow-left mr-1"></i>Back to List
                 </a>
             </div>
         </div>
 
         <!-- Invoice Header -->
-        <div class="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
-            <div class="px-4 py-5 sm:px-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Invoice #<?php echo htmlspecialchars($invoice['invoice_number']); ?></h3>
-                <p class="mt-1 max-w-2xl text-sm text-gray-500">
+        <div class="mt-4 bg-white shadow overflow-hidden sm:rounded-lg">
+            <div class="px-3 py-4 sm:px-4">
+                <h3 class="text-md font-medium text-gray-900">Invoice #<?php echo htmlspecialchars($invoice['invoice_number']); ?></h3>
+                <p class="mt-1 max-w-2xl text-xs text-gray-500">
                     Created on <?php echo date('F j, Y', strtotime($invoice['created_at'])); ?>
                 </p>
             </div>
-            <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
-                <dl class="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2">
+            <div class="border-t border-gray-200 px-3 py-4 sm:px-4">
+                <dl class="grid grid-cols-1 gap-x-2 gap-y-4 sm:grid-cols-2">
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Student Name</dt>
-                        <dd class="mt-1 text-sm text-gray-900">
+                        <dt class="text-xs font-medium text-gray-500">Student Name</dt>
+                        <dd class="mt-1 text-xs text-gray-900">
                             <?php echo htmlspecialchars($invoice['first_name'] . ' ' . $invoice['last_name']); ?>
                         </dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Admission Number</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo htmlspecialchars($invoice['admission_number']); ?></dd>
+                        <dt class="text-xs font-medium text-gray-500">Admission Number</dt>
+                        <dd class="mt-1 text-xs text-gray-900"><?php echo htmlspecialchars($invoice['admission_number']); ?></dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Class</dt>
-                        <dd class="mt-1 text-sm text-gray-900">
+                        <dt class="text-xs font-medium text-gray-500">Class</dt>
+                        <dd class="mt-1 text-xs text-gray-900">
                             <?php echo ucfirst($invoice['class']); ?> (<?php echo ucfirst(str_replace('_', ' ', $invoice['education_level'])); ?>)
                         </dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Term/Year</dt>
-                        <dd class="mt-1 text-sm text-gray-900">Term <?php echo $invoice['term']; ?> / <?php echo $invoice['academic_year']; ?></dd>
+                        <dt class="text-xs font-medium text-gray-500">Term/Year</dt>
+                        <dd class="mt-1 text-xs text-gray-900">Term <?php echo $invoice['term']; ?> / <?php echo $invoice['academic_year']; ?></dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Guardian Name</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo htmlspecialchars($invoice['guardian_name']); ?></dd>
+                        <dt class="text-xs font-medium text-gray-500">Guardian Name</dt>
+                        <dd class="mt-1 text-xs text-gray-900"><?php echo htmlspecialchars($invoice['guardian_name']); ?></dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Phone Number</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo htmlspecialchars($invoice['phone_number']); ?></dd>
+                        <dt class="text-xs font-medium text-gray-500">Phone Number</dt>
+                        <dd class="mt-1 text-xs text-gray-900"><?php echo htmlspecialchars($invoice['phone_number']); ?></dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Due Date</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo date('F j, Y', strtotime($invoice['due_date'])); ?></dd>
+                        <dt class="text-xs font-medium text-gray-500">Due Date</dt>
+                        <dd class="mt-1 text-xs text-gray-900"><?php echo date('F j, Y', strtotime($invoice['due_date'])); ?></dd>
                     </div>
                     <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Status</dt>
-                        <dd class="mt-1 text-sm">
+                        <dt class="text-xs font-medium text-gray-500">Status</dt>
+                        <dd class="mt-1 text-xs">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                 <?php 
                                 echo match($invoice['status']) {
@@ -156,18 +156,18 @@ require_once '../../includes/navigation.php';
         </div>
 
         <!-- Fee Items -->
-        <div class="mt-6 bg-white shadow sm:rounded-lg">
-            <div class="px-4 py-5 sm:px-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Fee Breakdown</h3>
+        <div class="mt-4 bg-white shadow sm:rounded-lg">
+            <div class="px-3 py-4 sm:px-4">
+                <h3 class="text-md font-medium text-gray-900">Fee Breakdown</h3>
             </div>
             <div class="border-t border-gray-200">
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200 text-xs">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
                                 Fee Item
                             </th>
-                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">
                                 Amount
                             </th>
                         </tr>
@@ -175,35 +175,35 @@ require_once '../../includes/navigation.php';
                     <tbody class="bg-white divide-y divide-gray-200">
                         <?php foreach ($invoice_items as $item): ?>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900">
                                 <?php echo htmlspecialchars($item['fee_item']); ?>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900 text-right">
                                 KES <?php echo number_format($item['amount'], 2); ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
                         <tr class="bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
                                 Total Amount
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-right">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-900 text-right">
                                 KES <?php echo number_format($invoice['total_amount'], 2); ?>
                             </td>
                         </tr>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-green-600">
                                 Amount Paid
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 text-right">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-green-600 text-right">
                                 KES <?php echo number_format($invoice['paid_amount'], 2); ?>
                             </td>
                         </tr>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-red-600">
                                 Balance
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600 text-right">
+                            <td class="px-3 py-2 whitespace-nowrap font-medium text-red-600 text-right">
                                 KES <?php echo number_format($invoice['balance'], 2); ?>
                             </td>
                         </tr>
@@ -214,27 +214,27 @@ require_once '../../includes/navigation.php';
 
         <!-- Payment History -->
         <?php if (!empty($payments)): ?>
-        <div class="mt-6 bg-white shadow sm:rounded-lg">
-            <div class="px-4 py-5 sm:px-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Payment History</h3>
+        <div class="mt-4 bg-white shadow sm:rounded-lg">
+            <div class="px-3 py-4 sm:px-4">
+                <h3 class="text-md font-medium text-gray-900">Payment History</h3>
             </div>
             <div class="border-t border-gray-200">
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200 text-xs">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
                                 Receipt Number
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
                                 Date
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
                                 Payment Mode
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
                                 Reference
                             </th>
-                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">
                                 Amount
                             </th>
                         </tr>
@@ -242,19 +242,19 @@ require_once '../../includes/navigation.php';
                     <tbody class="bg-white divide-y divide-gray-200">
                         <?php foreach ($payments as $payment): ?>
                         <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900">
                                 <?php echo htmlspecialchars($payment['payment_number']); ?>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900">
                                 <?php echo date('M j, Y', strtotime($payment['created_at'])); ?>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900">
                                 <?php echo ucfirst($payment['payment_mode']); ?>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900">
                                 <?php echo htmlspecialchars($payment['reference_number'] ?? '-'); ?>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                            <td class="px-3 py-2 whitespace-nowrap text-gray-900 text-right">
                                 KES <?php echo number_format($payment['amount'], 2); ?>
                             </td>
                         </tr>
