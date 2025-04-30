@@ -5,12 +5,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo isset($page_title) ? $page_title . ' - ' : ''; ?>School Fees Management System</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
+        }
+        
+        /* Select2 Tailwind CSS Integration */
+        .select2-container--default .select2-selection--single {
+            height: 38px;
+            padding: 5px;
+            border-color: #D1D5DB;
+            border-radius: 0.375rem;
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 36px;
+        }
+        
+        .select2-container--default .select2-search--dropdown .select2-search__field {
+            border-color: #D1D5DB;
+            border-radius: 0.375rem;
+            padding: 8px;
+        }
+        
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: #2563EB;
+        }
+        
+        .select2-dropdown {
+            border-color: #D1D5DB;
+            border-radius: 0.375rem;
         }
     </style>
 </head>
