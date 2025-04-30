@@ -21,17 +21,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Category name is required';
     } else {
         // Check if category already exists
-        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM expense_categories WHERE name = :name");
-        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $result = $stmt->execute();
-        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $stmt = $conn->prepare("SELECT COUNT(*) as count FROM expense_categories WHERE name = ?");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         if ($row['count'] > 0) {
             $error = 'Category name already exists';
         } else {
             // Insert new category
-            $stmt = $conn->prepare("INSERT INTO expense_categories (name, description) VALUES (:name, :description)");
-            $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-            $stmt->bindValue(':description', $description, SQLITE3_TEXT);
+            $stmt = $conn->prepare("INSERT INTO expense_categories (name, description) VALUES (?, ?)");
+            $stmt->bind_param("ss", $name, $description);
             $stmt->execute();
 
             flashMessage('success', 'Expense category added successfully');
