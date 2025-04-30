@@ -37,7 +37,31 @@ $stmt->execute();
 $result = $stmt->get_result();
 $invoice_items = [];
 while ($row = $result->fetch_assoc()) {
-    $invoice_items[] = $row;
+    $invoice_items[$row['fee_structure_id']] = $row;
+}
+
+// Fetch student details for class and education level
+$student_stmt = $conn->prepare("SELECT class, education_level FROM students WHERE id = ?");
+$student_stmt->bind_param('i', $invoice['student_id']);
+$student_stmt->execute();
+$student_result = $student_stmt->get_result();
+$student = $student_result->fetch_assoc();
+
+// Fetch all fee items for the student's class, education level, term, and academic year
+$fee_items = [];
+if ($student) {
+    $class = $student['class'];
+    $education_level = $student['education_level'];
+    $term = $invoice['term'];
+    $academic_year = $invoice['academic_year'];
+
+    $fee_stmt = $conn->prepare("SELECT id, fee_item, amount FROM fee_structure WHERE class = ? AND education_level = ? AND term = ? AND academic_year = ?");
+    $fee_stmt->bind_param('ssis', $class, $education_level, $term, $academic_year);
+    $fee_stmt->execute();
+    $fee_result = $fee_stmt->get_result();
+    while ($fee_row = $fee_result->fetch_assoc()) {
+        $fee_items[] = $fee_row;
+    }
 }
 
 // Fetch active students for dropdown
@@ -163,20 +187,22 @@ require_once '../../includes/navigation.php';
                 <div class="mt-6">
                     <h3 class="text-lg font-medium text-gray-900">Fee Items</h3>
                     <div id="feeItemsContainer" class="mt-4 space-y-4">
-                        <?php foreach ($invoice_items as $item): ?>
-                        <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-3 border-b pb-4">
-                            <div class="sm:col-span-1">
-                                <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars($item['fee_structure_id']); ?></label>
-                                <input type="hidden" name="fee_items[][fee_id]" value="<?php echo $item['fee_structure_id']; ?>">
-                            </div>
-                            <div class="sm:col-span-1">
-                                <label class="block text-sm font-medium text-gray-700">Amount (KES)</label>
-                                <input type="number" name="fee_items[][amount]" value="<?php echo htmlspecialchars($item['amount']); ?>" required min="0" step="0.01"
-                                       class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md fee-amount"
-                                       onchange="calculateTotal()">
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
+                <?php foreach ($fee_items as $item): ?>
+                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-4 border-b pb-4 items-center">
+                    <div class="sm:col-span-1">
+                        <input type="checkbox" id="fee_<?php echo $item['id']; ?>" name="fee_items[<?php echo $item['id']; ?>][selected]" value="1"
+                            <?php echo isset($invoice_items[$item['id']]) ? 'checked' : ''; ?>
+                            onchange="toggleAmountInput(<?php echo $item['id']; ?>)">
+                        <label for="fee_<?php echo $item['id']; ?>" class="ml-2 block text-sm font-medium text-gray-700"><?php echo htmlspecialchars($item['fee_item']); ?></label>
+                    </div>
+                    <div class="sm:col-span-1">
+                        <label class="block text-sm font-medium text-gray-700">Amount (KES)</label>
+                        <input type="number" id="amount_<?php echo $item['id']; ?>" name="fee_items[<?php echo $item['id']; ?>][amount]" value="<?php echo isset($invoice_items[$item['id']]) ? htmlspecialchars($invoice_items[$item['id']]['amount']) : htmlspecialchars($item['amount']); ?>" min="0" step="0.01"
+                            class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md fee-amount"
+                            onchange="calculateTotal()" <?php echo isset($invoice_items[$item['id']]) ? '' : 'disabled'; ?>>
+                    </div>
+                </div>
+                <?php endforeach; ?>
                     </div>
 
                     <div class="mt-4 flex justify-between items-center">
@@ -245,17 +271,21 @@ function loadFeeStructure() {
 }
 
 function calculateTotal() {
-    const amounts = document.getElementsByClassName('fee-amount');
+    const feeItemsContainer = document.getElementById('feeItemsContainer');
+    const feeItemDivs = feeItemsContainer.querySelectorAll('div.grid');
     let total = 0;
-    
-    for (let amount of amounts) {
-        total += parseFloat(amount.value) || 0;
-    }
-    
+
+    feeItemDivs.forEach(div => {
+        const checkbox = div.querySelector('input[type="checkbox"]');
+        const amountInput = div.querySelector('input[type="number"]');
+        if (checkbox && checkbox.checked && amountInput) {
+            total += parseFloat(amountInput.value) || 0;
+        }
+    });
+
     document.getElementById('totalAmount').textContent = total.toFixed(2);
 }
 
-// Form validation
 document.getElementById('invoiceForm').addEventListener('submit', function(e) {
     const feeItems = document.getElementsByClassName('fee-amount');
     if (feeItems.length === 0) {
@@ -264,14 +294,11 @@ document.getElementById('invoiceForm').addEventListener('submit', function(e) {
         return;
     }
     
+    // Removed validation for fee amounts greater than 0 as per user request
+    
     let total = 0;
     for (let item of feeItems) {
-        if (!item.value || parseFloat(item.value) <= 0) {
-            e.preventDefault();
-            alert('All fee amounts must be greater than 0');
-            return;
-        }
-        total += parseFloat(item.value);
+        total += parseFloat(item.value) || 0;
     }
     
     if (total <= 0) {
@@ -279,6 +306,17 @@ document.getElementById('invoiceForm').addEventListener('submit', function(e) {
         alert('Total amount must be greater than 0');
     }
 });
+function toggleAmountInput(feeId) {
+    const checkbox = document.getElementById('fee_' + feeId);
+    const amountInput = document.getElementById('amount_' + feeId);
+    amountInput.disabled = !checkbox.checked;
+    if (!checkbox.checked) {
+        amountInput.value = '';
+    } else if (amountInput.value === '') {
+        amountInput.value = '0.00';
+    }
+    calculateTotal();
+}
 </script>
 
 <?php require_once '../../includes/footer.php'; ?>
