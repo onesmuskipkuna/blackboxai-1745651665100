@@ -16,14 +16,14 @@ $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate input
     $first_name = sanitize($_POST['first_name']);
-    $last_name = sanitize($_POST['last_name']);
-    $guardian_name = sanitize($_POST['guardian_name']);
-    $phone_number = sanitize($_POST['phone_number']);
+    $last_name = sanitize($_POST['last_name'] ?? '');
+    $guardian_name = sanitize($_POST['guardian_name'] ?? '');
+    $phone_number = sanitize($_POST['phone_number'] ?? '');
     $education_level = sanitize($_POST['education_level']);
     $class = sanitize($_POST['class']);
     
-    if (empty($first_name) || empty($last_name) || empty($guardian_name) || empty($phone_number) || empty($education_level) || empty($class)) {
-        $error = 'All fields are required';
+    if (empty($first_name) || empty($education_level) || empty($class)) {
+        $error = 'First Name, Education Level, and Class are required';
     } else {
         // Generate admission number (Year/Serial Number format)
         $year = date('Y');
@@ -71,7 +71,9 @@ require_once '../../includes/navigation.php';
             <form method="POST" class="space-y-6">
                 <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                     <div>
-                        <label for="first_name" class="block text-sm font-medium text-gray-700">First Name</label>
+                        <label for="first_name" class="block text-sm font-medium text-gray-700">
+                            First Name <span class="text-red-500">*</span>
+                        </label>
                         <div class="mt-1">
                             <input type="text" name="first_name" id="first_name" required
                                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
@@ -79,32 +81,40 @@ require_once '../../includes/navigation.php';
                     </div>
 
                     <div>
-                        <label for="last_name" class="block text-sm font-medium text-gray-700">Last Name</label>
+                        <label for="last_name" class="block text-sm font-medium text-gray-700">
+                            Last Name <span class="text-gray-400">(Optional)</span>
+                        </label>
                         <div class="mt-1">
-                            <input type="text" name="last_name" id="last_name" required
+                            <input type="text" name="last_name" id="last_name"
                                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
                         </div>
                     </div>
 
                     <div>
-                        <label for="guardian_name" class="block text-sm font-medium text-gray-700">Parent/Guardian Name</label>
+                        <label for="guardian_name" class="block text-sm font-medium text-gray-700">
+                            Parent/Guardian Name <span class="text-gray-400">(Optional)</span>
+                        </label>
                         <div class="mt-1">
-                            <input type="text" name="guardian_name" id="guardian_name" required
+                            <input type="text" name="guardian_name" id="guardian_name"
                                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
                         </div>
                     </div>
 
                     <div>
-                        <label for="phone_number" class="block text-sm font-medium text-gray-700">Phone Number</label>
+                        <label for="phone_number" class="block text-sm font-medium text-gray-700">
+                            Phone Number <span class="text-gray-400">(Optional)</span>
+                        </label>
                         <div class="mt-1">
-                            <input type="tel" name="phone_number" id="phone_number" required
+                            <input type="tel" name="phone_number" id="phone_number"
                                    pattern="[0-9]{10,}"
                                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
                         </div>
                     </div>
 
                     <div>
-                        <label for="education_level" class="block text-sm font-medium text-gray-700">Education Level</label>
+                        <label for="education_level" class="block text-sm font-medium text-gray-700">
+                            Education Level <span class="text-red-500">*</span>
+                        </label>
                         <div class="mt-1">
                             <select id="education_level" name="education_level" required
                                     class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
@@ -116,7 +126,9 @@ require_once '../../includes/navigation.php';
                     </div>
 
                     <div>
-                        <label for="class" class="block text-sm font-medium text-gray-700">Class</label>
+                        <label for="class" class="block text-sm font-medium text-gray-700">
+                            Class <span class="text-red-500">*</span>
+                        </label>
                         <div class="mt-1">
                             <select id="class" name="class" required
                                     class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
@@ -164,9 +176,11 @@ document.getElementById('education_level').addEventListener('change', function()
     }
 });
 
-// Phone number validation
+// Phone number validation (only if provided)
 document.getElementById('phone_number').addEventListener('input', function() {
-    this.value = this.value.replace(/[^0-9]/g, '');
+    if (this.value) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    }
 });
 </script>
 
