@@ -13,7 +13,7 @@ $conn = $db->getConnection();
 $query = "SELECT * FROM students ORDER BY admission_number";
 $result = $conn->query($query);
 $students = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $students[] = $row;
 }
 
