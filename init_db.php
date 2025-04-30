@@ -56,9 +56,11 @@ try {
             term INT NOT NULL,
             academic_year VARCHAR(255) NOT NULL,
             due_date DATE NOT NULL,
+            created_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (student_id) REFERENCES students(id)
+            FOREIGN KEY (student_id) REFERENCES students(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
         )",
         "CREATE TABLE IF NOT EXISTS invoice_items (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -77,8 +79,10 @@ try {
             payment_mode ENUM('cash', 'mpesa', 'bank') NOT NULL,
             reference_number VARCHAR(255),
             remarks TEXT,
+            created_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
         )",
         "CREATE TABLE IF NOT EXISTS payment_items (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -101,8 +105,10 @@ try {
             amount DECIMAL(10,2) NOT NULL,
             description TEXT,
             date DATE NOT NULL,
+            created_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (category_id) REFERENCES expense_categories(id)
+            FOREIGN KEY (category_id) REFERENCES expense_categories(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
         )",
         "CREATE TABLE IF NOT EXISTS payroll (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -114,14 +120,85 @@ try {
     ];
 
     foreach ($queries as $query) {
-        $conn->exec($query);
+        $conn->query($query);
     }
 
     // Insert default admin user if not exists
     $password_hash = password_hash('admin123', PASSWORD_DEFAULT);
-    $stmt = $conn->prepare("INSERT INTO users (username, password, email, first_name, last_name, role) VALUES ('admin', :password, 'admin@school.com', 'System', 'Administrator', 'admin') ON DUPLICATE KEY UPDATE username=username");
-    $stmt->bindValue(':password', $password_hash, SQLITE3_TEXT);
+    $stmt = $conn->prepare("INSERT IGNORE INTO users (username, password, email, first_name, last_name, role) VALUES (?, ?, ?, ?, ?, ?)");
+    $username = 'admin';
+    $email = 'admin@school.com';
+    $first_name = 'System';
+    $last_name = 'Administrator';
+    $role = 'admin';
+    $stmt->bind_param('ssssss', $username, $password_hash, $email, $first_name, $last_name, $role);
     $stmt->execute();
+
+    // Get admin user ID and update existing records
+    $admin_result = $conn->query("SELECT id FROM users WHERE username = 'admin' LIMIT 1");
+    $admin_user = $admin_result->fetch_assoc();
+    $admin_id = $admin_user['id'];
+
+    // Update existing records to set created_by to admin
+    if ($admin_id) {
+        $updates = [
+            "UPDATE invoices SET created_by = ? WHERE created_by IS NULL",
+            "UPDATE payments SET created_by = ? WHERE created_by IS NULL",
+            "UPDATE expenses SET created_by = ? WHERE created_by IS NULL"
+        ];
+
+        foreach ($updates as $query) {
+            $stmt = $conn->prepare($query);
+            $stmt->bind_param('i', $admin_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+        "CREATE TABLE IF NOT EXISTS payroll (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            employee_name VARCHAR(255) NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"
+    ];
+
+    foreach ($queries as $query) {
+        $conn->query($query);
+    }
+
+    // Insert default admin user if not exists
+    $password_hash = password_hash('admin123', PASSWORD_DEFAULT);
+    $stmt = $conn->prepare("INSERT IGNORE INTO users (username, password, email, first_name, last_name, role) VALUES (?, ?, ?, ?, ?, ?)");
+    $username = 'admin';
+    $email = 'admin@school.com';
+    $first_name = 'System';
+    $last_name = 'Administrator';
+    $role = 'admin';
+    $stmt->bind_param('ssssss', $username, $password_hash, $email, $first_name, $last_name, $role);
+    $stmt->execute();
+    $stmt->close();
+
+    // Get admin user ID and update existing records
+    $admin_result = $conn->query("SELECT id FROM users WHERE username = 'admin' LIMIT 1");
+    $admin_user = $admin_result->fetch_assoc();
+    $admin_id = $admin_user['id'];
+
+    // Update existing records to set created_by to admin
+    if ($admin_id) {
+        $updates = [
+            "UPDATE invoices SET created_by = ? WHERE created_by IS NULL",
+            "UPDATE payments SET created_by = ? WHERE created_by IS NULL",
+            "UPDATE expenses SET created_by = ? WHERE created_by IS NULL"
+        ];
+
+        foreach ($updates as $query) {
+            $stmt = $conn->prepare($query);
+            $stmt->bind_param('i', $admin_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
 
     echo "Database initialized successfully!\n";
     echo "Default admin credentials:\n";
