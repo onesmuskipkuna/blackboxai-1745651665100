@@ -38,17 +38,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_students'])) 
     } else {
         try {
             // Begin transaction
-            $conn->exec('BEGIN');
+            $conn->begin_transaction();
             
             $promoted_count = 0;
             $errors = [];
             
             foreach ($student_ids as $student_id) {
                 // Get student's current class
-                $stmt = $conn->prepare("SELECT class, education_level FROM students WHERE id = :id AND status = 'active'");
-                $stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
-                $result = $stmt->execute();
-                $student = $result->fetchArray(SQLITE3_ASSOC);
+                $stmt = $conn->prepare("SELECT class, education_level FROM students WHERE id = ? AND status = 'active'");
+                $stmt->bind_param("i", $student_id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $student = $result->fetch_assoc();
                 
                 if (!$student) {
                     $errors[] = "Student ID $student_id not found or not active";
@@ -72,20 +73,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_students'])) 
                 // Update student's class and education level
                 $update_stmt = $conn->prepare("
                     UPDATE students 
-                    SET class = :new_class, 
-                        education_level = :new_education_level 
-                    WHERE id = :id
+                    SET class = ?, 
+                        education_level = ? 
+                    WHERE id = ?
                 ");
-                $update_stmt->bindValue(':new_class', $new_class, SQLITE3_TEXT);
-                $update_stmt->bindValue(':new_education_level', $new_education_level, SQLITE3_TEXT);
-                $update_stmt->bindValue(':id', $student_id, SQLITE3_INTEGER);
+                $update_stmt->bind_param("ssi", $new_class, $new_education_level, $student_id);
                 $update_stmt->execute();
                 
                 $promoted_count++;
             }
             
             // Commit transaction
-            $conn->exec('COMMIT');
+            $conn->commit();
             
             if (!empty($errors)) {
                 $error = "Promotion completed with errors:\n" . implode("\n", $errors);
@@ -95,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_students'])) 
             
         } catch (Exception $e) {
             // Rollback on error
-            $conn->exec('ROLLBACK');
+            $conn->rollback();
             $error = 'Error promoting students: ' . $e->getMessage();
         }
     }
@@ -111,7 +110,7 @@ $query = "
 ";
 $result = $conn->query($query);
 $students = [];
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+while ($row = $result->fetch_assoc()) {
     $students[] = $row;
 }
 
