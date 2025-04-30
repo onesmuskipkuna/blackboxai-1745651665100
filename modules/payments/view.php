@@ -29,11 +29,12 @@ try {
         FROM payments p
         JOIN invoices i ON p.invoice_id = i.id
         JOIN students s ON i.student_id = s.id
-        WHERE p.id = :payment_id
+        WHERE p.id = ?
     ");
-    $stmt->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
-    $result = $stmt->execute();
-    $payment = $result->fetchArray(SQLITE3_ASSOC);
+    $stmt->bind_param('i', $payment_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $payment = $result->fetch_assoc();
 
     if (!$payment) {
         throw new Exception('Payment not found');
@@ -52,14 +53,15 @@ try {
             ) as total_paid
         FROM invoice_items ii
         LEFT JOIN fee_structure fs ON ii.fee_structure_id = fs.id
-        WHERE ii.invoice_id = :invoice_id
+        WHERE ii.invoice_id = ?
         ORDER BY fs.fee_item
     ");
-    $stmt->bindValue(':invoice_id', $payment['invoice_id'], SQLITE3_INTEGER);
-    $result = $stmt->execute();
+    $stmt->bind_param('i', $payment['invoice_id']);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
     $fee_items = [];
-    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+    while ($row = $result->fetch_assoc()) {
         if ($row['fee_item'] === null) {
             $row['fee_item'] = 'Balance Carried Forward';
         }
@@ -69,12 +71,12 @@ try {
         $stmt2 = $conn->prepare("
             SELECT COALESCE(amount, 0) as amount
             FROM payment_items
-            WHERE payment_id = :payment_id AND invoice_item_id = :invoice_item_id
+            WHERE payment_id = ? AND invoice_item_id = ?
         ");
-        $stmt2->bindValue(':payment_id', $payment_id, SQLITE3_INTEGER);
-        $stmt2->bindValue(':invoice_item_id', $row['invoice_item_id'], SQLITE3_INTEGER);
-        $result2 = $stmt2->execute();
-        $current_payment = $result2->fetchArray(SQLITE3_ASSOC);
+        $stmt2->bind_param('ii', $payment_id, $row['invoice_item_id']);
+        $stmt2->execute();
+        $result2 = $stmt2->get_result();
+        $current_payment = $result2->fetch_assoc();
         
         $row['current_payment'] = $current_payment['amount'] ?? 0;
         $fee_items[] = $row;
